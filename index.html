@@ -19,15 +19,25 @@
   <link rel="stylesheet" href="./static/css/academicons.min.css" />
   <link rel="stylesheet" href="./static/css/fontawesome.all.min.css" />
   <link rel="stylesheet" href="./static/css/index.css" />
-  <link rel="stylesheet" href="./static/css/dics.original.css" />
   <script src="./static/js/jquery.min.js"></script>
   <script defer src="./static/js/fontawesome.all.min.js"></script>
-  <script src="static/js/dics.original.js"></script>
 
   <style>
+    :root {
+      --space-xs: 0.25rem;
+      --space-sm: 0.5rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+      --space-xl: 2rem;
+  
+      --author-accent: #544848;
+      --author-accent-hover: #afa0a0;
+    }
+
+    /* authors section */
     .publication-authors {
       text-align: center;
-      margin-top: 2rem;
+      margin-top: var(--space-xl);
     }
     
     .authors-grid {
@@ -42,56 +52,46 @@
       max-width: 230px;
     }
     
-    .author-name {
+    .hero .publication-authors a.author-name {
       font-weight: 600;
       font-size: 0.95rem;
-      text-decoration: none;
-      color: #1a73e8;
-    }
-    
-    .author-name:hover {
-      color: #0b5cd4;
+      color: var(--author-accent) !important;
       text-decoration: none;
     }
     
+    .hero .publication-authors a.author-name:hover {
+      color: var(--author-accent-hover) !important;
+    }
+  
     .author-affiliation {
       font-size: 0.95rem;
       color: #444;
     }
 
+    .equal-contribution {
+      margin-bottom: var(--space-xl);
+      font-style: italic;
+      font-size: 1rem;
+      color: #514a4a;
+    }
+    
+    /* titles + text */
     .section-title {
       font-size: 1.5rem;
-      color: #060505;
       text-align: center;
-      margin-top: 3rem;
-      margin-bottom: 0.1rem;
+      color: #060505;
+      margin: var(--space-xl) 0 var(--space-xs);
     }
 
     .section-description {
-      margin-top: 0rem;
-      margin-bottom: 0.75rem;
+      margin: 0 0 var(--space-md);
       font-size: 1.05rem;
+      line-height: 1.4;
     }
-    
-    @media screen and (max-width: 768px) {
-      .section-description {
-        padding: 0 1.5rem;
-      }
-      .cam-icon {
-        height: 1.6em;
-      }
-      .side-by-side-videos {
-        flex-wrap: wrap;
-        padding: 0 1rem;
-        gap: 1rem;
-      }
-      .side-by-side-videos .video-item {
-        width: 45%;
-      }
-    }
+
+    /* buttons */
     .buttons {
-      margin-top: 0.75rem;
-      margin-bottom: 1.25rem;
+      margin: var(--space-sm) 0 var(--space-lg);
     }
 
     .custom-button {
@@ -99,24 +99,18 @@
       color: white;
       border: none;
       border-radius: 20px;
-      padding: 0.7rem 0.7rem;
-      margin: 0.25rem;
+      padding: 0.7rem;
+      margin: var(--space-xs);
       cursor: pointer;
-      transition: background-color 0.3s, color 0.3s;
-      font-size: 0.7rem;
+      transition: 0.3s;
       flex: 0 0 91px;
-      text-align: center;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      box-sizing: border-box;
     }
 
-    .side-by-side-videos {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      width: 100%;
+    .custom-button:hover {
+      background-color: #2b2b2b;
     }
 
     .custom-button.active {
@@ -125,8 +119,31 @@
       border: 1px solid #b0b0b0;
     }
 
+    .custom-button.large {
+      background-color: #161515;
+      color: white;
+      border: none;
+      border-radius: 28px;
+      padding: 0.85rem 1.25rem;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .custom-button.large:hover {
+      background-color: #2b2b2b;
+    }
+    
+    .custom-button.large.active {
+      background-color: white;
+      color: #080808;
+      border: 1px solid #b0b0b0;
+    }
+
+    /* videos */
     .video-container {
-      margin-top: 0.5rem;
+      margin-top: var(--space-sm);
       display: none;
     }
 
@@ -134,60 +151,71 @@
       display: block;
     }
 
-    .parent-video-compare-container {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-    }
-    
-    .video-item {
-      width: 25%;
-      text-align: center;
-    }
-    
-    .video-item video {
+    .merged-video {
       width: 100%;
       border-radius: 6px;
     }
 
-    .video-container .side-by-side-videos video {
+    .merged-label-row {
+      display: flex;
       width: 100%;
-      max-width: 360px;
-      display: block;
-      margin-left: auto;
-      margin-right: auto;
+      margin: var(--space-sm) 0 var(--space-lg);
     }
 
-    .cam-icon {
-      height: 2.5em;
-      width: auto;
-      vertical-align: middle;
-    }
-
-    .video-title {
-      margin-top: 0.3rem;
-      margin-bottom: 2.5rem;
-      font-size: 1rem;
+    .merged-label-item {
+      flex: 1; 
+      text-align: center;
       font-weight: 500;
-      color: #333;
+      font-size: 0.9rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.25rem;
+      gap: var(--space-xs);
     }
 
-    .buttons {
-      margin-top: 0.5rem;
-      margin-bottom: 1.5rem;
+    .cam-icon {
+      height: 1.2em;
+      vertical-align: middle;
     }
 
-    .equal-contribution {
-      margin-bottom: 2rem;
-      font-style: italic;
-      font-size: 1rem;
-      color: #666;
+    .merged-label-item .cam-icon {
+      height: 2.0em;
     }
 
+    .label-spacer {
+       width: 6%; 
+       flex-shrink: 0;
+    }
+
+    /* viser */
+    .viser-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: var(--space-md);
+    }
+
+    .viser-box {
+      flex: 1 1 320px;
+    }
+
+    @media (min-width: 1024px) {
+      .viser-row {
+        flex-wrap: nowrap;
+      }
+      .viser-box {
+        flex: 1 1 0;
+      }
+    }
+
+    .viser-iframe {
+      width: 100%;
+      border: none;
+      border-radius: 6px;
+      aspect-ratio: 4 / 3;
+      max-height: none;
+    }
+    
   </style>
 </head>
 
@@ -202,6 +230,7 @@
     </div>
   </nav>
 
+  <!-- title -->
   <section class="hero">
     <div class="hero-body">
       <div class="container is-max-desktop">
@@ -211,96 +240,29 @@
               <span style="font-weight: bold;">FullCircle:</span><br>
               <span style="font-weight: normal;">Effortless 3D Reconstruction from Casual 360° Captures</span>
             </h1>
+            <!-- authors -->
             <div class="publication-authors">
-
               <div class="authors-grid">
-                <!-- Yalda -->
-                <div class="author">
-                  <a class="author-name"
-                     href="https://youlenda.github.io"
-                     target="_blank" rel="noopener noreferrer">
-                    Yalda Foroutan*
-                  </a>
-                  <div class="author-affiliation">Simon Fraser University</div>
-                </div>
-            
-                <!-- Ipek -->
-                <div class="author">
-                  <a class="author-name"
-                     href="https://ipekoztas.github.io"
-                     target="_blank" rel="noopener noreferrer">
-                    Ipek Oztas*
-                  </a>
-                  <div class="author-affiliation">Simon Fraser University</div>
-                  <div class="author-affiliation">Bilkent University</div>
-                </div>
-            
-                <!-- Daniel -->
-                <div class="author">
-                  <a class="author-name"
-                     href="http://drebain.com"
-                     target="_blank" rel="noopener noreferrer">
-                    Daniel Rebain
-                  </a>
-                  <div class="author-affiliation">University of British Columbia</div>
-                </div>
-            
-                <!-- Aysegul -->
-                <div class="author">
-                  <a class="author-name"
-                     href="https://www.cs.bilkent.edu.tr/~adundar/"
-                     target="_blank" rel="noopener noreferrer">
-                    Aysegul Dundar
-                  </a>
-                  <div class="author-affiliation">Bilkent University</div>
-                </div>
-            
-                <!-- Kwang Moo Yi -->
-                <div class="author">
-                  <a class="author-name"
-                     href="https://www.cs.ubc.ca/~kmyi/"
-                     target="_blank" rel="noopener noreferrer">
-                    Kwang Moo Yi
-                  </a>
-                  <div class="author-affiliation">University of British Columbia</div>
-                </div>
-            
-                <!-- Lily -->
-                <div class="author">
-                  <a class="author-name"
-                     href="https://lilygoli.github.io"
-                     target="_blank" rel="noopener noreferrer">
-                    Lily Goli
-                  </a>
-                  <div class="author-affiliation">University of Toronto</div>
-                </div>
-            
-                <!-- Andrea -->
-                <div class="author">
-                  <a class="author-name"
-                     href="https://theialab.ca"
-                     target="_blank" rel="noopener noreferrer">
-                    Andrea Tagliasacchi
-                  </a>
-                  <div class="author-affiliation">Simon Fraser University</div>
-                  <div class="author-affiliation">University of Toronto</div>
-                </div>
+                <div class="author"><a class="author-name" href="https://youlenda.github.io" target="_blank">Yalda Foroutan*</a><div class="author-affiliation">Simon Fraser University</div></div>
+                <div class="author"><a class="author-name" href="https://ipekoztas.github.io" target="_blank">Ipek Oztas*</a><div class="author-affiliation">Simon Fraser University</div><div class="author-affiliation">Bilkent University</div></div>
+                <div class="author"><a class="author-name" href="http://drebain.com" target="_blank">Daniel Rebain</a><div class="author-affiliation">University of British Columbia</div></div>
+                <div class="author"><a class="author-name" href="https://www.cs.bilkent.edu.tr/~adundar/" target="_blank">Aysegul Dundar</a><div class="author-affiliation">Bilkent University</div></div>
+                <div class="author"><a class="author-name" href="https://www.cs.ubc.ca/~kmyi/" target="_blank">Kwang Moo Yi</a><div class="author-affiliation">University of British Columbia</div></div>
+                <div class="author"><a class="author-name" href="https://lilygoli.github.io" target="_blank">Lily Goli</a><div class="author-affiliation">University of Toronto</div></div>
+                <div class="author"><a class="author-name" href="https://theialab.ca" target="_blank">Andrea Tagliasacchi</a><div class="author-affiliation">Simon Fraser University</div><div class="author-affiliation">University of Toronto</div></div>
               </div>
-
               <p class="equal-contribution">
-                * Equal contribution
+                * equal contribution
               </p>
-            
             </div>
+            <!-- external links -->
             <div class="publication-links">
-              <a href="paper.pdf" class="custom-button">
-                <span class="icon">
-                  <i class="fas fa-file-alt"></i>
-                </span>
+              <a href="paper.pdf" class="custom-button large">
+                <span class="icon"><i class="fas fa-file-alt"></i></span>
                 <span>Paper</span>
               </a>
             </div>
-          
+            <!-- teaser -->        
             <div class="columns is-centered" style="margin-top: 1.5rem;">
               <div class="column has-text-centered">
                 <h2 class="section-title">Teaser</h2>
@@ -309,9 +271,9 @@
                   alt="Teaser image">
               </div>
             </div>
-
+            <!-- abstract -->    
             <div class="columns is-centered">
-              <div class="column is-three-quarters-desktop is-full-tablet has-text-centered">
+              <div class="column has-text-centered">
                 <h2 class="section-title">Abstract</h2>
                 <p class="subtitle is-5 section-description">
                   Radiance fields have emerged as powerful tools for 3D scene reconstruction.
@@ -324,178 +286,196 @@
                 </p>
               </div>
             </div>
-
           </div>
         </div>
       </div>
     </div>
   </section>
+  <!-- 360 vs pers -->
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+        <h2 class="section-title">Dual-fisheye vs. perspective</h2>
+        <p class="subtitle is-5 section-description">
+          360° cameras are convenient ways of performing casual scene capture. Using a dual-fisheye 360° camera model 
+          (<img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon" style="height: 1em;">-<img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon" style="height: 1em;">) 
+          allows much higher reconstruction quality than using perspective cameras 
+          (<img src="logos/camera-1.png"  alt="Perspective"  class="cam-icon" style="height: 1em;">-<img src="logos/camera-1.png"  alt="Perspective"  class="cam-icon" style="height: 1em;">), 
+          or using a fisheye camera with a perspective model 
+          (<img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon" style="height: 1em;">-<img src="logos/camera-1.png"  alt="Perspective"  class="cam-icon" style="height: 1em;">).
+        </p>
+        <video class="merged-video" autoplay muted loop playsinline>
+          <source src="static/videos/360vspers/360vspers_merged.mp4" type="video/mp4">
+        </video>
 
-  <div class="columns is-centered">
-    <div class="column is-three-quarters-desktop is-full-tablet has-text-centered">
-      <h2 class="section-title">Dual-fisheye vs. perspective</h2>
-      <p class="subtitle is-5 section-description">
-        360° cameras are convenient ways of performing casual scene capture. Using a dual-fisheye 360° camera model 
-        (<img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon" style="height: 1.2em;">-<img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon" style="height: 1.2em;">) 
-        allows much higher reconstruction quality than using perspective cameras 
-        (<img src="logos/camera-1.png" alt="Perspective" class="cam-icon" style="height: 1.2em;">-<img src="logos/camera-1.png" alt="Perspective" class="cam-icon" style="height: 1.2em;">), 
-        or using a fisheye camera with a perspective model 
-        (<img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon" style="height: 1.2em;">-<img src="logos/camera-1.png" alt="Perspective" class="cam-icon" style="height: 1.2em;">).
-      </p>
-    </div>
-  </div>
-
-  <div class="columns is-multiline is-centered">
-    <div class="column is-three-quarters-desktop is-full-tablet has-text-centered">
-      <div class="side-by-side-videos">
-        <div class="video-item">
-          <video autoplay muted loop>
-            <source src="static/videos/360vspers/pers.mp4" type="video/mp4">
-          </video>
-          <div class="video-title">
-            <img src="logos/camera-1.png" alt="Perspective" class="cam-icon">
-            <span style="font-size: 1.5em; font-weight: bold; vertical-align: middle;">-</span>
-            <img src="logos/camera-1.png" alt="Perspective" class="cam-icon">
+        <div class="merged-label-row">
+          <div class="merged-label-item">
+            <img src="logos/camera-1.png" class="cam-icon">
+            <span class="dash">-</span>
+            <img src="logos/camera-1.png" class="cam-icon">
+          </div>
+          <div class="label-spacer"></div>
+          <div class="merged-label-item">
+            <img src="logos/fisheye-1.png" class="cam-icon">
+            <span class="dash">-</span>
+            <img src="logos/camera-1.png" class="cam-icon">
+          </div>
+          <div class="label-spacer"></div>
+          <div class="merged-label-item">
+            <img src="logos/fisheye-1.png" class="cam-icon">
+            <span class="dash">-</span>
+            <img src="logos/fisheye-1.png" class="cam-icon">
+          </div>
+          <div class="label-spacer"></div>
+          <div class="merged-label-item">
+            Camera path
           </div>
         </div>
-  
-        <div class="video-item">
-          <video autoplay muted loop>
-            <source src="static/videos/360vspers/360pers.mp4" type="video/mp4">
-          </video>
-          <div class="video-title">
-            <img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon">
-            <span style="font-size: 1.5em; font-weight: bold; vertical-align: middle;">-</span>
-            <img src="logos/camera-1.png" alt="Perspective" class="cam-icon">
-          </div>
-        </div>
-  
-        <div class="video-item">
-          <video autoplay muted loop>
-            <source src="static/videos/360vspers/360.mp4" type="video/mp4">
-          </video>
-          <div class="video-title">
-            <img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon">
-            <span style="font-size: 1.5em; font-weight: bold; vertical-align: middle;">-</span>
-            <img src="logos/fisheye-1.png" alt="Dual-fisheye" class="cam-icon">
-          </div>
-        </div>
-  
-        <div class="video-item">
-          <video autoplay muted loop>
-            <source src="static/videos/360vspers/cam.mp4" type="video/mp4">
-          </video>
-          <div class="video-title">Camera path</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  
-  <div class="columns is-centered">
-    <div class="column is-three-quarters-desktop is-full-tablet has-text-centered">
-      <h2 class="section-title">Reconstruction via undistortion</h2>
-      <p class="subtitle is-5 section-description">
-        Conventional undistortion-based utilization of 360 scene capture degrades performance, both with robust (SLS) and without robust reconstruction (3DGS).
-      </p>
-    </div>
-  </div>
 
-  <div class="columns is-centered">
-    <div class="column has-text-centered">
-      <div class="buttons are-small is-multiline is-centered">
-        <button class="custom-button" onclick="showVideo('video6', 'undistort', this)">Lab</button>
-        <button class="custom-button active" onclick="showVideo('video7', 'undistort', this)">Lounge</button>
-        <button class="custom-button" onclick="showVideo('video8', 'undistort', this)">Persons</button>
-        <button class="custom-button" onclick="showVideo('video9', 'undistort', this)">Shadow</button>
-        
-      </div>
-    </div>
-  </div>
+        <h3 class="section-title" style="margin-top: 1.5rem;">
+          Interactive 3D reconstruction
+        </h3>
 
-  <div class="columns is-centered">
-    <div class="column has-text-centered">
+        <div class="viser-row">
+          <!-- pers-pers -->
+          <div class="viser-box">
+            <iframe
+              class="viser-iframe"
+              src="viser-client/index.html?playbackPath=/recordings/pers-aligned.viser&initialCameraPosition=1.531,-1.473,1.049&initialCameraLookAt=1.607,-0.295,1.780&initialCameraUp=-0.000,0.000,1.000"
+              allowfullscreen
+            ></iframe>
 
-      <div id="video6" class="video-container" data-group="undistort">
-        <div class="parent-video-compare-container">
-          <div class="video-item">
-            <video src="static/videos/pers/lab-3dgs.mp4" autoplay loop muted></video>
-            <div class="video-title">3DGS</div>
+            <div class="merged-label-row">
+              <div class="merged-label-item">
+                <img src="logos/camera-1.png" class="cam-icon">
+                <span style="font-weight: bold; margin: 0 2px;">-</span>
+                <img src="logos/camera-1.png" class="cam-icon">
+              </div>
+              <div class="label-spacer"></div>
+            </div>
           </div>
-          <div class="video-item">
-            <video src="static/videos/pers/lab-sls.mp4" autoplay loop muted></video>
-            <div class="video-title">SLS</div>
-          </div>
-          <div class="video-item">
-            <video src="static/videos/pers/lab-ours.mp4" autoplay loop muted></video>
-            <div class="video-title">FullCircle (ours)</div>
-          </div>
-        </div>
-      </div>
 
-      <div id="video7" class="video-container active" data-group="undistort">
-        <div class="parent-video-compare-container">
-          <div class="video-item">
-            <video src="static/videos/pers/lounge-3dgs.mp4" autoplay loop muted></video>
-            <div class="video-title">3DGS</div>
+          <!-- fisheye-pers -->
+          <div class="viser-box">
+            <iframe
+              class="viser-iframe"
+              src="viser-client/index.html?playbackPath=/recordings/360_pers.viser&initialCameraPosition=1.531,-1.473,1.049&initialCameraLookAt=1.607,-0.295,1.780&initialCameraUp=-0.000,0.000,1.000"
+              allowfullscreen
+            ></iframe>
+
+            <div class="merged-label-row">
+              <div class="merged-label-item">
+                <img src="logos/fisheye-1.png" class="cam-icon">
+                <span style="font-weight: bold; margin: 0 2px;">-</span>
+                <img src="logos/camera-1.png" class="cam-icon">
+              </div>
+              <div class="label-spacer"></div>
+            </div>
           </div>
-          <div class="video-item">
-            <video src="static/videos/pers/lounge-sls.mp4" autoplay loop muted></video>
-            <div class="video-title">SLS</div>
-          </div>
-          <div class="video-item">
-            <video src="static/videos/pers/lounge-ours.mp4" autoplay loop muted></video>
-            <div class="video-title">FullCircle (ours)</div>
+
+          <!-- fisheye-fisheye -->
+          <div class="viser-box">
+            <iframe
+              class="viser-iframe"
+              src="viser-client/index.html?playbackPath=/recordings/360.viser&initialCameraPosition=1.531,-1.473,1.049&initialCameraLookAt=1.607,-0.295,1.780&initialCameraUp=-0.000,0.000,1.000"
+              allowfullscreen
+            ></iframe>
+
+            <div class="merged-label-row">
+              <div class="merged-label-item">
+                <img src="logos/fisheye-1.png" class="cam-icon">
+                <span style="font-weight: bold; margin: 0 2px;">-</span>
+                <img src="logos/fisheye-1.png" class="cam-icon">
+              </div>
+              <div class="label-spacer"></div>
+            </div>
           </div>
         </div>
       </div>
-
-      <div id="video8" class="video-container" data-group="undistort">
-        <div class="parent-video-compare-container">
-          <div class="video-item">
-            <video src="static/videos/pers/persons-3dgs.mp4" autoplay loop muted></video>
-            <div class="video-title">3DGS</div>
-          </div>
-          <div class="video-item">
-            <video src="static/videos/pers/persons-sls.mp4" autoplay loop muted></video>
-            <div class="video-title">SLS</div>
-          </div>
-          <div class="video-item">
-            <video src="static/videos/pers/persons-ours.mp4" autoplay loop muted></video>
-            <div class="video-title">FullCircle (ours)</div>
-          </div>
-        </div>
-      </div>
-
-      <div id="video9" class="video-container" data-group="undistort">
-        <div class="parent-video-compare-container">
-          <div class="video-item">
-            <video src="static/videos/pers/shadow-3dgs.mp4" autoplay loop muted></video>
-            <div class="video-title">3DGS</div>
-          </div>
-          <div class="video-item">
-            <video src="static/videos/pers/shadow-sls.mp4" autoplay loop muted></video>
-            <div class="video-title">SLS</div>
-          </div>
-          <div class="video-item">
-            <video src="static/videos/pers/shadow-ours.mp4" autoplay loop muted></video>
-            <div class="video-title">FullCircle (ours)</div>
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
-
   
-  <div class="columns is-centered">
-    <div class="column is-three-quarters-desktop is-full-tablet has-text-centered">
-      <h2 class="section-title">Dual-fisheye reconstruction</h2>
-      <p class="subtitle is-5 section-description">
-        We also remove the camera operator, which provides clearer reconstruction quality. This is especially important for a casual capture setup with a 360° camera, as the operator is always in view.
-      </p>
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+        <h2 class="section-title">Reconstruction via undistortion</h2>
+        <p class="subtitle is-5 section-description">
+          Conventional undistortion-based utilization of 360 scene capture degrades performance, both with robust (SLS) and without robust reconstruction (3DGS).
+        </p>
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+        <div class="buttons are-small is-multiline is-centered">
+          <button class="custom-button" onclick="showVideo('video6', 'undistort', this)">Lab</button>
+          <button class="custom-button active" onclick="showVideo('video7', 'undistort', this)">Lounge</button>
+          <button class="custom-button" onclick="showVideo('video8', 'undistort', this)">Persons</button>
+          <button class="custom-button" onclick="showVideo('video9', 'undistort', this)">Shadow</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+
+        <div id="video6" class="video-container" data-group="undistort">
+          <video class="merged-video" src="static/videos/pers/lab.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+        </div>
+
+        <div id="video7" class="video-container active" data-group="undistort">
+          <video class="merged-video" src="static/videos/pers/lounge.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+        </div>
+
+        <div id="video8" class="video-container" data-group="undistort">
+          <video class="merged-video" src="static/videos/pers/persons.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+        </div>
+
+        <div id="video9" class="video-container" data-group="undistort">
+          <video class="merged-video" src="static/videos/pers/shadow.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
+
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+        <h2 class="section-title">Dual-fisheye reconstruction</h2>
+        <p class="subtitle is-5 section-description">
+          We also remove the camera operator, which provides clearer reconstruction quality. This is especially important for a casual capture setup with a 360° camera, as the operator is always in view.
+        </p>
+      </div>
+    </div>
 
     <div class="columns is-centered">
       <div class="column has-text-centered">
@@ -505,7 +485,6 @@
           <button class="custom-button active" onclick="showVideo('video3', 'fisheye', this)">Flat 2</button>
           <button class="custom-button" onclick="showVideo('video4', 'fisheye', this)">Room 2</button>
           <button class="custom-button" onclick="showVideo('video5', 'fisheye', this)">Room 3</button>
-          
         </div>
       </div>
     </div>
@@ -514,104 +493,190 @@
       <div class="column has-text-centered">
 
         <div id="video1" class="video-container" data-group="fisheye">
-          <div class="parent-video-compare-container">
-            <div class="side-by-side-videos">
-              <div class="video-item">
-                <video src="static/videos/fisheye/room1-grt.mp4" autoplay loop muted></video>
-                <div class="video-title">3DGRT</div>
+          <video class="merged-video" src="static/videos/fisheye/room1.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGRT</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+          <h3 class="section-title">
+            Interactive 3D reconstruction
+          </h3>
+          <div class="viser-row">
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/room1-grt.viser&initialCameraPosition=0.000,0.000,0.252&initialCameraLookAt=0.000,0.000,0.000&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">3DGRT</div>
               </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/room1-sls.mp4" autoplay loop muted></video>
-                <div class="video-title">SLS</div>
-              </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/room1-ours.mp4" autoplay loop muted></video>
-                <div class="video-title">FullCircle (ours)</div>
+            </div>
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/room1-ours.viser&initialCameraPosition=0.000,0.000,0.252&initialCameraLookAt=0.000,0.000,0.000&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">FullCircle (ours)</div>
               </div>
             </div>
           </div>
         </div>
         
         <div id="video2" class="video-container" data-group="fisheye">
-          <div class="parent-video-compare-container">
-            <div class="side-by-side-videos">
-              <div class="video-item">
-                <video src="static/videos/fisheye/flat1-grt.mp4" autoplay loop muted></video>
-                <div class="video-title">3DGRT</div>
+          <video class="merged-video" src="static/videos/fisheye/flat1.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGRT</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+          <h3 class="section-title">
+            Interactive 3D reconstruction
+          </h3>
+          <div class="viser-row">
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/flat1-grt.viser&initialCameraPosition=-2.840,-0.575,1.542&initialCameraLookAt=-2.840,-0.575,0.534&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">3DGRT</div>
               </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/flat1-sls.mp4" autoplay loop muted></video>
-                <div class="video-title">SLS</div>
-              </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/flat1-ours.mp4" autoplay loop muted></video>
-                <div class="video-title">FullCircle (ours)</div>
+            </div>
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/flat1-ours.viser&initialCameraPosition=-2.840,-0.575,1.542&initialCameraLookAt=-2.840,-0.575,0.534&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">FullCircle (ours)</div>
               </div>
             </div>
           </div>
         </div>
 
         <div id="video3" class="video-container active" data-group="fisheye">
-          <div class="parent-video-compare-container">
-            <div class="side-by-side-videos">
-              <div class="video-item">
-                <video src="static/videos/fisheye/flat2-grt.mp4" autoplay loop muted></video>
-                <div class="video-title">3DGRT</div>
+          <video class="merged-video" src="static/videos/fisheye/flat2.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGRT</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+          <h3 class="section-title">
+            Interactive 3D reconstruction
+          </h3>
+          <div class="viser-row">
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/flat2-grt.viser&initialCameraPosition=0.000,0.000,0.252&initialCameraLookAt=0.000,0.000,0.000&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">3DGRT</div>
               </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/flat2-sls.mp4" autoplay loop muted></video>
-                <div class="video-title">SLS</div>
-              </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/flat2-ours.mp4" autoplay loop muted></video>
-                <div class="video-title">FullCircle (ours)</div>
+            </div>
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/flat2-ours.viser&initialCameraPosition=0.000,0.000,0.252&initialCameraLookAt=0.000,0.000,0.000&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">FullCircle (ours)</div>
               </div>
             </div>
           </div>
         </div>
         
         <div id="video4" class="video-container" data-group="fisheye">
-          <div class="parent-video-compare-container">
-            <div class="side-by-side-videos">
-              <div class="video-item">
-                <video src="static/videos/fisheye/room2-grt.mp4" autoplay loop muted></video>
-                <div class="video-title">3DGRT</div>
+          <video class="merged-video" src="static/videos/fisheye/room2.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGRT</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+          <h3 class="section-title">
+            Interactive 3D reconstruction
+          </h3>
+          <div class="viser-row">
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/room2-grt.viser"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">3DGRT</div>
               </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/room2-sls.mp4" autoplay loop muted></video>
-                <div class="video-title">SLS</div>
-              </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/room2-ours.mp4" autoplay loop muted></video>
-                <div class="video-title">FullCircle (ours)</div>
+            </div>
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/room2-ours.viser"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">FullCircle (ours)</div>
               </div>
             </div>
           </div>
         </div>
 
         <div id="video5" class="video-container" data-group="fisheye">
-          <div class="parent-video-compare-container">
-            <div class="side-by-side-videos">
-              <div class="video-item">
-                <video src="static/videos/fisheye/room3-grt.mp4" autoplay loop muted></video>
-                <div class="video-title">3DGRT</div>
+          <video class="merged-video" src="static/videos/fisheye/room3.mp4" autoplay loop muted playsinline></video>
+          <div class="merged-label-row">
+            <div class="merged-label-item">3DGRT</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">SLS</div>
+            <div class="label-spacer"></div>
+            <div class="merged-label-item">FullCircle (ours)</div>
+          </div>
+          <h3 class="section-title">
+            Interactive 3D reconstruction
+          </h3>
+          <div class="viser-row">
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/room3-grt.viser&initialCameraPosition=0.436,0.333,0.673&initialCameraLookAt=0.440,0.331,0.664&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">3DGRT</div>
               </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/room3-sls.mp4" autoplay loop muted></video>
-                <div class="video-title">SLS</div>
-              </div>
-              <div class="video-item">
-                <video src="static/videos/fisheye/room3-ours.mp4" autoplay loop muted></video>
-                <div class="video-title">FullCircle (ours)</div>
+            </div>
+            <div class="viser-box">
+              <iframe
+                class="viser-iframe"
+                src="viser-client/index.html?playbackPath=/recordings/room3-ours.viser&initialCameraPosition=0.436,0.333,0.673&initialCameraLookAt=0.440,0.331,0.664&initialCameraUp=-0.000,0.000,1.000"
+                allowfullscreen
+              ></iframe>
+              <div class="merged-label-row">
+                <div class="merged-label-item">FullCircle (ours)</div>
               </div>
             </div>
           </div>
         </div>
 
       </div>
-    </div>
+    </div> 
   </div>
-</div>
+
+</body>
 
 </html>
 
