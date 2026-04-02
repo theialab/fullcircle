@@ -5,13 +5,11 @@ defaults:
   - override hydra/job_logging: disabled
 
 path: ???
-seed_initialization: 42  # seed for rng in model initialization
 experiment_name: ""
 resume: ""
 out_dir: "./runs"
 n_iterations: 30000
 with_gui: false
-with_viser_gui: false
 gui_update_from_device: true
 val_frequency: 5000
 num_workers: 24
@@ -21,6 +19,9 @@ test_last: true
 validate_first: false
 log_frequency: 1
 compute_extra_metrics: true
+use_border_mask: true
+border_mask_train: "masking/mask_train.png"
+border_mask_test:  "masking/mask_test.png"
 
 enable_frame_timings: false
 
@@ -30,23 +31,27 @@ writer:
   max_num_hits: 128
   log_image_views: ${int_list:[ 0, 13, 27, 43, 78 ]}
 
-export_ply:
+export_ingp:
+  enabled: true
+  force_half: false
+  path: ""
+import_ingp:
   enabled: false
+  path: ""
+  init_global_step: 0
+
+export_ply:
+  enabled: true
   path: ""
 import_ply:
   enabled: false
   path: ""
   init_global_step: 0
   
-export_usd:
+export_usdz:
   enabled: false
   path: ""
   apply_normalizing_transform: true
-  format: standard  # "nurec" for Omniverse USDVol internal format, "standard" for USDVol ParticleField3DGaussianSplat
-  half_precision: false
-  export_cameras: true
-  export_background: true
-  sorting_mode_hint: cameraDistance
 
 model:
   density_activation: sigmoid
@@ -121,17 +126,6 @@ loss:
 
   use_scale: false
   lambda_scale: 0.0
-
-# Post-processing configuration
-post_processing:
-  method: null # Possible values: null, "ppisp"
-  # Enable the controller for predicting per-frame corrections for novel views.
-  # When false, zero corrections are used for novel views.
-  use_controller: true
-  # Number of extra distillation steps after main training (only for "ppisp").
-  # When > 0, enables distillation mode: Gaussians and PPISP params are frozen,
-  # only the controller is trained for these additional steps.
-  n_distillation_steps: 5000
 
 hydra:
   output_subdir: null

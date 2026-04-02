@@ -2,21 +2,20 @@
 .vscode
 .polyscope.ini
 
-external/
 runs/
-extra_info/
+external/
 wandb/
 outputs/
-extra_info/
 eval/
 extra_info/
+FullCircle/
 
 debug_**
 
 utils/ngc/grid_search_configs
 
 imgui.ini
-data
+data/
 
 thirdparty/simple-knn/build
 thirdparty/simple-knn/dist

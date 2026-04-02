@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,24 +14,26 @@
 # limitations under the License.
 
 import argparse
-import logging
 import sys
+import logging
 from pathlib import Path
 
 from hydra.compose import compose
 from hydra.initialize import initialize
 from omegaconf import DictConfig
 
-from threedgrut.export import NuRecExporter
+from threedgrut.export.usdz_exporter import USDZExporter
 from threedgrut.model.model import MixtureOfGaussians
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
 def load_default_config(
-    config_name: str = "apps/colmap_3dgut.yaml", config_path: str = "../../../configs"
+    config_name: str = 'apps/colmap_3dgut.yaml',
+    config_path: str = '../../../configs'
 ) -> DictConfig:
     """
     Load configuration using Hydra from the specified config file.
@@ -51,9 +53,8 @@ def load_default_config(
 def main():
     parser = argparse.ArgumentParser(description="Convert PLY to USDZ")
     parser.add_argument("input_file", type=str, help="Input PLY file path")
-    parser.add_argument(
-        "--output_file", type=str, help="Output USDZ file path (defaults to input file path with .usdz extension)"
-    )
+    parser.add_argument("--output_file", type=str,
+                        help="Output USDZ file path (defaults to input file path with .usdz extension)")
 
     args = parser.parse_args()
 
@@ -87,19 +88,16 @@ def main():
         logger.info(f"Loading PLY with init_from_ply: {input_path}")
         model.init_from_ply(str(input_path), init_model=False)
 
-        # 3. Create NuRecExporter
-        exporter = NuRecExporter()
+        # 3. Create USDZExporter
+        exporter = USDZExporter()
 
         # 4. Export to USDZ
-        logger.info(f"Exporting with NuRecExporter: {output_path}")
+        logger.info(f"Exporting with USDZExporter: {output_path}")
         exporter.export(model, output_path, dataset=None, conf=conf)
 
         logger.info(f"Successfully exported to {output_path}")
     except Exception as e:
         logger.error(f"Error processing PLY file: {e}")
-        import traceback
-
-        logger.error(f"Full traceback: {traceback.format_exc()}")
         sys.exit(1)
 
 

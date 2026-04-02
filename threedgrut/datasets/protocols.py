@@ -24,11 +24,12 @@ import torch
 class Batch:
     rays_ori: torch.Tensor  # [B, H, W, 3] ray origins in arbitrary space
     rays_dir: torch.Tensor  # [B, H, W, 3] ray directions in arbitrary space
-    T_to_world: torch.Tensor  # [B, 4, 4] transformation matrix from the ray space to the world space (START pose)
-    T_to_world_end: Optional[torch.Tensor] = None  # [B, 4, 4] END pose for rolling shutter
-    rays_in_world_space: bool = False  # True if rays are already in world space (no transform needed)
+    T_to_world: (
+        torch.Tensor
+    )  # [B, 4, 4] transformation matrix from the ray space to the world space
     rgb_gt: Optional[torch.Tensor] = None
     mask: Optional[torch.Tensor] = None
+    dilated_mask: Optional[torch.Tensor] = None
     intrinsics: Optional[list] = None
     intrinsics_OpenCVPinholeCameraModelParameters: Optional[dict] = None
     intrinsics_OpenCVFisheyeCameraModelParameters: Optional[dict] = None
@@ -43,21 +44,32 @@ class Batch:
 
     def __post_init__(self):
         batch_size = self.T_to_world.shape[0]
-        assert self.rays_ori.shape[0] == batch_size, "rays_ori must have the same batch size"
-        assert self.rays_dir.shape[0] == batch_size, "rays_dir must have the same batch size"
+        assert (
+            self.rays_ori.shape[0] == batch_size
+        ), "rays_ori must have the same batch size"
+        assert (
+            self.rays_dir.shape[0] == batch_size
+        ), "rays_dir must have the same batch size"
         if self.rgb_gt is not None:
             assert self.rgb_gt.ndim == 4, "rgb_gt must be a 4D tensor [B, H, W, 3]"
-            assert self.rgb_gt.shape[0] == batch_size, "rgb_gt must have the same batch size"
+            assert (
+                self.rgb_gt.shape[0] == batch_size
+            ), "rgb_gt must have the same batch size"
         if self.mask is not None:
             assert self.mask.ndim == 4, "mask must be a 3D tensor [B, H, W, 1]"
-            assert self.mask.shape[0] == batch_size, "mask must have the same batch size"
+            assert (
+                self.mask.shape[0] == batch_size
+            ), "mask must have the same batch size"
+        if self.dilated_mask is not None:
+            assert self.dilated_mask.ndim == 4, "mask must be a 3D tensor [B, H, W, 1]"
+            assert (
+                self.dilated_mask.shape[0] == batch_size
+            ), "dilated mask must have the same batch size"
         if self.intrinsics:
             assert isinstance(self.intrinsics, list), "intrinsics must be a list"
-            assert len(self.intrinsics) == 4, "intrinsics must have 4 elements [fx, fy, cx, cy]"
-        if self.pixel_coords is not None:
-            assert self.pixel_coords.ndim == 4, "pixel_coords must be a 4D tensor [B, H, W, 2]"
-            assert self.pixel_coords.shape[0] == batch_size, "pixel_coords must have the same batch size"
-            assert self.pixel_coords.shape[3] == 2, "pixel_coords last dimension must be 2 (x, y)"
+            assert (
+                len(self.intrinsics) == 4
+            ), "intrinsics must have 4 elements [fx, fy, cx, cy]"
 
 
 class BoundedMultiViewDataset(Protocol):

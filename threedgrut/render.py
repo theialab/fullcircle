@@ -16,6 +16,7 @@
 import json
 import os
 from pathlib import Path
+import cv2
 
 import numpy as np
 import torch
@@ -58,7 +59,9 @@ class Renderer:
         self.dataset, self.dataloader = self.create_test_dataloader(conf)
         self.writer = writer
         self.compute_extra_metrics = compute_extra_metrics
-        self.post_processing = post_processing
+        self.use_border_mask = conf.use_border_mask
+        self.border_mask_path = conf.border_mask_test
+        self._border_mask_cache: dict[tuple, torch.Tensor] = {}
 
         if conf.model.background.color == "black":
             self.bg_color = torch.zeros((3,), dtype=torch.float32, device="cuda")
@@ -72,17 +75,15 @@ class Renderer:
         from threedgrut.datasets.utils import configure_dataloader_for_platform
 
         dataset = datasets.make_test(name=conf.dataset.type, config=conf)
-
+        
         # Configure DataLoader arguments for the current platform
-        dataloader_kwargs = configure_dataloader_for_platform(
-            {
-                "num_workers": 8,
-                "batch_size": 1,
-                "shuffle": False,
-                "collate_fn": None,
-            }
-        )
-
+        dataloader_kwargs = configure_dataloader_for_platform({
+            'num_workers': 8,
+            'batch_size': 1,
+            'shuffle': False,
+            'collate_fn': None,
+        })
+        
         dataloader = torch.utils.data.DataLoader(dataset, **dataloader_kwargs)
         return dataset, dataloader
 
@@ -99,11 +100,6 @@ class Renderer:
         global_step = checkpoint["global_step"]
 
         conf = checkpoint["config"]
-        # overrides
-        if conf["render"]["method"] == "3dgrt":
-            conf["render"]["particle_kernel_density_clamping"] = True
-            conf["render"]["min_transmittance"] = 0.03
-        conf["render"]["enable_kernel_timings"] = True
 
         object_name = Path(conf.path).stem
         experiment_name = conf["experiment_name"]
@@ -189,6 +185,18 @@ class Renderer:
             compute_extra_metrics=compute_extra_metrics,
             post_processing=post_processing,
         )
+    
+    def create_border_mask(self, image_shape, device=None) -> torch.Tensor:
+        ## Border mask for fisheye test images (also tripod region), resized to the current resolution.
+        batch, height, width, _ = image_shape
+        key = (height, width, device if isinstance(device, str) else str(device))
+        if key not in self._border_mask_cache:
+            mask_np = cv2.imread(self.border_mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask_np.shape != (height, width):
+                mask_np = cv2.resize(mask_np, (width, height), interpolation=cv2.INTER_NEAREST)
+            mask = torch.from_numpy(mask_np.astype(bool)).float()
+            self._border_mask_cache[key] = mask.unsqueeze(0).unsqueeze(-1).to(device)
+        return self._border_mask_cache[key].expand(batch, -1, -1, -1)
 
     @torch.no_grad()
     def render_all(self):
@@ -206,9 +214,14 @@ class Renderer:
         output_path_renders = os.path.join(self.out_dir, f"ours_{int(self.global_step)}", "renders")
         os.makedirs(output_path_renders, exist_ok=True)
 
-        if self.save_gt:
-            output_path_gt = os.path.join(self.out_dir, f"ours_{int(self.global_step)}", "gt")
-            os.makedirs(output_path_gt, exist_ok=True)
+        
+        output_path_gt = os.path.join(self.out_dir, f"ours_{int(self.global_step)}", "gt")
+        os.makedirs(output_path_gt, exist_ok=True)
+        
+        metrics_dir = os.path.join(self.out_dir, f"ours_{int(self.global_step)}")
+        os.makedirs(metrics_dir, exist_ok=True)
+        metrics_fpath = os.path.join(metrics_dir, "metrics.txt")
+        mf = open(metrics_fpath, "w", encoding="utf-8")
 
         psnr = []
         ssim = []
@@ -236,14 +249,22 @@ class Renderer:
 
             # Compute the outputs of a single batch
             outputs = self.model(gpu_batch)
-
-            # Apply post-processing
-            if self.post_processing is not None:
-                outputs = apply_post_processing(self.post_processing, outputs, gpu_batch, training=False)
-
             pred_rgb_full = outputs["pred_rgb"]
             rgb_gt_full = gpu_batch.rgb_gt
 
+            pred_rgb_metric = pred_rgb_full
+            rgb_gt_metric = rgb_gt_full
+
+            if self.use_border_mask:
+                border_mask = self.create_border_mask(gpu_batch.rgb_gt.shape, gpu_batch.rgb_gt.device)
+                pred_rgb_metric = pred_rgb_metric * border_mask
+                rgb_gt_metric = rgb_gt_metric * border_mask
+
+            mask = gpu_batch.mask
+            if mask is not None:
+                pred_rgb_metric = pred_rgb_metric * (1 - mask)
+                rgb_gt_metric = rgb_gt_metric * (1 - mask)
+                
             # The values are already alpha composited with the background
             torchvision.utils.save_image(
                 pred_rgb_full.squeeze(0).permute(2, 0, 1),
@@ -252,14 +273,28 @@ class Renderer:
             pred_img_to_write = pred_rgb_full[-1].clip(0, 1.0)
             gt_img_to_write = rgb_gt_full[-1].clip(0, 1.0)
 
-            if self.save_gt:
-                torchvision.utils.save_image(
-                    rgb_gt_full.squeeze(0).permute(2, 0, 1),
-                    os.path.join(output_path_gt, "{0:05d}".format(iteration) + ".png"),
-                )
+            if self.writer is not None:
+                test_images.append(pred_img_to_write)
 
-            # Compute the loss
-            psnr_single_img = criterions["psnr"](outputs["pred_rgb"], gpu_batch.rgb_gt).item()
+            torchvision.utils.save_image(
+                rgb_gt_full.squeeze(0).permute(2, 0, 1),
+                os.path.join(output_path_gt, "{0:05d}".format(iteration) + ".png"),
+            )
+            
+            pred = pred_rgb_full.squeeze(0).permute(2, 0, 1)   # [3, H, W]
+            gt   = rgb_gt_full.squeeze(0).permute(2, 0, 1)     # [3, H, W]
+
+            error_map = torch.abs(pred - gt)                   # [3, H, W]
+            
+            error_dir = os.path.join(output_path_renders, "error_maps")
+            os.makedirs(error_dir, exist_ok=True)
+
+            torchvision.utils.save_image(
+                error_map,
+                os.path.join(error_dir,  "{0:05d}".format(iteration) + ".png"),
+            )
+
+            psnr_single_img = criterions["psnr"](pred_rgb_metric, rgb_gt_metric).item()
             psnr.append(psnr_single_img)  # evaluation on valid rays only
             logger.info(f"Frame {iteration}, PSNR: {psnr[-1]}")
 
@@ -276,33 +311,21 @@ class Renderer:
             # evaluate on full image
             ssim.append(
                 criterions["ssim"](
-                    pred_rgb_full.permute(0, 3, 1, 2),
-                    rgb_gt_full.permute(0, 3, 1, 2),
+                    pred_rgb_metric.permute(0, 3, 1, 2),
+                    rgb_gt_metric.permute(0, 3, 1, 2),
                 ).item()
             )
             lpips.append(
                 criterions["lpips"](
-                    pred_rgb_full.clip(0, 1).permute(0, 3, 1, 2),
-                    rgb_gt_full.permute(0, 3, 1, 2),
+                    pred_rgb_metric.clip(0, 1).permute(0, 3, 1, 2),
+                    rgb_gt_metric.permute(0, 3, 1, 2),
                 ).item()
             )
-
-            # Color-corrected metrics
-            pred_rgb_cc = color_correct_affine(pred_rgb_full, rgb_gt_full)
-            cc_psnr.append(criterions["psnr"](pred_rgb_cc, rgb_gt_full).item())
-            cc_ssim.append(
-                criterions["ssim"](
-                    pred_rgb_cc.permute(0, 3, 1, 2),
-                    rgb_gt_full.permute(0, 3, 1, 2),
-                ).item()
-            )
-            cc_lpips.append(
-                criterions["lpips"](
-                    pred_rgb_cc.clip(0, 1).permute(0, 3, 1, 2),
-                    rgb_gt_full.permute(0, 3, 1, 2),
-                ).item()
-            )
-
+            mf.write(
+                    f"Frame {iteration}, PSNR: {psnr_single_img:.4f}, "
+                    f"SSIM: {ssim[-1]:.4f}, LPIPS: {lpips[-1]:.4f}\n"
+                    )
+            mf.flush()
             # Record the time
             inference_time.append(outputs["frame_time_ms"])
 
@@ -319,6 +342,15 @@ class Renderer:
         std_psnr = np.std(psnr)
         mean_inference_time = np.mean(inference_time)
 
+        mf.write("\n# Summary\n")
+        mf.write(f"mean_psnr\t{mean_psnr:.6f}\n")
+        mf.write(f"std_psnr\t{std_psnr:.6f}\n")
+        mf.write(f"mean_ssim\t{mean_ssim:.6f}\n")
+        mf.write(f"mean_lpips\t{mean_lpips:.6f}\n")
+        if self.conf.render.enable_kernel_timings:
+            mf.write(f"mean_inference_time_ms\t{mean_inference_time:.2f}\n")
+        mf.close()
+
         table = dict(
             mean_psnr=mean_psnr,
             mean_ssim=mean_ssim,
@@ -331,20 +363,6 @@ class Renderer:
 
         if self.conf.render.enable_kernel_timings:
             table["mean_inference_time"] = f"{'{:.2f}'.format(mean_inference_time)}" + " ms/frame"
-
-        # Save metrics to JSON file
-        metrics_json = dict(
-            mean_psnr=float(mean_psnr),
-            mean_ssim=float(mean_ssim),
-            mean_lpips=float(mean_lpips),
-            mean_cc_psnr=float(mean_cc_psnr),
-            mean_cc_ssim=float(mean_cc_ssim),
-            mean_cc_lpips=float(mean_cc_lpips),
-        )
-        metrics_path = os.path.join(self.out_dir, "metrics.json")
-        with open(metrics_path, "w") as f:
-            json.dump(metrics_json, f, indent=2)
-        logger.info(f"📄 Metrics saved to: {metrics_path}")
 
         logger.log_table(f"⭐ Test Metrics - Step {self.global_step}", record=table)
 

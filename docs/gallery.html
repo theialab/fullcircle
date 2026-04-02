@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gallery</title>
+  <link rel="icon" href="./logos/favicon.ico" sizes="any">
+  <link rel="shortcut icon" href="./logos/favicon.ico" type="image/x-icon">
+  <link rel="icon" type="image/png" href="./logos/favicon.png" sizes="180x180">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    :root {
+      --c-text: #1f2937;
+      --c-muted: #4b5563;
+      --c-bottom-text: white;
+      --c-bottom-bg: #111827;
+      --c-bottom-bg-hover: #374151;
+
+      --fs-button: 15px;
+    }
+    body {
+      font-family: 'Noto Sans', sans-serif;
+      color: var(--c-text);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 20px 10px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    p.subtitle {
+      text-align: center;
+      color: var(--c-muted);
+      margin-bottom: 20px;
+    }
+
+    /* buttons */
+    .custom-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      background: var(--c-bottom-bg);
+      color: var(--c-bottom-text);
+      padding: 10px 18px;
+      border-radius: 20px;
+      font-size: var(--fs-button);
+      transition: 0.2s ease;
+    }
+    .custom-button:hover {
+      background: var(--c-bottom-bg-hover);
+      color: var(--c-bottom-text);
+      transform: translateY(-1px);
+    }
+    .top-links {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    /* video */
+    .video-card {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      align-items: center;
+      padding: 0;
+      margin: 0 auto;
+      position: relative;
+    }
+    .video-card + .video-card {
+      margin-top: -62px;
+    }
+    .video-card h3 {
+      margin: 0;
+      font-weight: 600;
+      transform: rotate(-90deg) translateX(10px);
+      transform-origin: center;
+      white-space: nowrap;
+      text-align: center;
+    }
+    video {
+      width: 100%;
+      display: block;
+    }
+    
+    /* media */
+    @media (max-width: 768px) {
+      .container {
+        padding: 16px 12px 8px;
+      }
+      .video-card + .video-card {
+        margin-top: -22px;
+      }
+      .video-card h3 {
+        font-size: 14px;
+      }
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-links">
+      <a href="index.html" class="custom-button">
+        <i class="fas fa-arrow-left"></i>
+        <span>Back to main page</span>
+      </a>
+    </div>
+
+    <h1>Gallery</h1>
+    <p class="subtitle">Additional qualitative results</p>
+
+    <div class="video-card">
+      <h3>Room 1</h3>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="static/videos/results/room1.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div class="video-card">
+      <h3>Flat 1</h3>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="static/videos/results/flat1.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div class="video-card">
+      <h3>Room 3</h3>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="static/videos/results/room3.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div class="video-card">
+      <h3>Lab</h3>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="static/videos/results/lab.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div class="video-card">
+      <h3>Persons</h3>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="static/videos/results/persons.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div class="video-card">
+      <h3>Dark</h3>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="static/videos/results/dark.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  </div>
+</body>
+</html>

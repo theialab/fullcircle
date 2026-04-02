@@ -155,12 +155,12 @@ extern "C" __global__ void __raygen__rg() {
                                                        rayHit.particleId,
                                                        {{(float3*)params.particleRadiance, nullptr}, params.sphDegree},
                                                        &rayRadiance);
-
+                                                       
                 // NOTE(qi): Race condition here, but as we are writing the same value, it seems it is safe.
                 if (hitWeight > 0.f) {
                     params.particleVisibility[rayHit.particleId] = 1;
                 }
-
+                
                 rayLastHitDistance = fmaxf(rayLastHitDistance, rayHit.distance);
 
 #ifdef ENABLE_HIT_COUNTS

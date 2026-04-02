@@ -13,10 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-import os
-import sys
-
+import os, math
 import torch
 import torch.utils.cpp_extension
 from torch.utils.cpp_extension import CUDA_HOME
@@ -42,7 +39,8 @@ def load(
             for edition in ["Enterprise", "Professional", "BuildTools", "Community"]:
                 paths = sorted(
                     glob.glob(
-                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\%s\VC\Tools\MSVC\*\bin\Hostx64\x64" % edition
+                        r"C:\Program Files (x86)\Microsoft Visual Studio\*\%s\VC\Tools\MSVC\*\bin\Hostx64\x64"
+                        % edition
                     ),
                     reverse=True,
                 )
@@ -53,7 +51,9 @@ def load(
         if os.system("where cl.exe >nul 2>nul") != 0:
             cl_path = find_cl_path()
             if cl_path is None:
-                raise RuntimeError("Could not locate a supported Microsoft Visual C++ installation")
+                raise RuntimeError(
+                    "Could not locate a supported Microsoft Visual C++ installation"
+                )
             os.environ["PATH"] += ";" + cl_path
 
     elif os.name == "posix":
@@ -66,7 +66,7 @@ def load(
     # Add Windows-specific flags
     if os.name == "nt":
         cflags.append("/DNOMINMAX")
-
+    
     if extra_cflags is not None:
         cflags += extra_cflags
 
@@ -108,7 +108,7 @@ def load(
         include_paths += extra_include_paths
 
     # Load
-    module = torch.utils.cpp_extension.load(
+    return torch.utils.cpp_extension.load(
         extra_cflags=cflags,
         extra_cuda_cflags=cuda_cflags,
         extra_ldflags=ldflags,
@@ -118,13 +118,3 @@ def load(
         *args,
         **kwargs,
     )
-
-    # Explicitly register module in sys.modules for compatibility with pybind11 3.x
-    # In pybind11 3.0+, exec_module() no longer auto-registers modules in sys.modules,
-    # which breaks subsequent `import module_name` statements.
-    # This is safe for pybind11 2.x as well (no-op since same object is already registered).
-    module_name = kwargs.get("name")
-    if module_name is not None:
-        sys.modules[module_name] = module
-
-    return module

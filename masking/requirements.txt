@@ -1,0 +1,22 @@
+# Masking pipeline — additional dependencies
+# (torch, torchvision, torchaudio are installed by conda in install_env.sh)
+
+# Pin numpy/opencv to versions compatible with torch 2.1.2
+numpy<2
+opencv-python<4.11
+
+# Geometry / projection
+pycolmap
+scipy
+
+# Detection & segmentation
+ultralytics                         # YOLOv8  (mask_perspectives.py)
+segment-anything                    # SAM v1  (mask_perspectives.py)
+# SAM 2 is installed separately with --no-deps in install_env.sh
+# but needs these runtime deps:
+huggingface_hub
+iopath
+
+# sam-ui
+pydantic
+matplotlib

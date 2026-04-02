@@ -14,12 +14,13 @@
 # limitations under the License.
 
 import copy
-import os
 import platform
-from typing import Optional
 
 import ncore.sensors
 import numpy as np
+from PIL import Image
+import cv2
+
 import torch
 from ncore.data import (
     OpenCVFisheyeCameraModelParameters,
@@ -44,6 +45,7 @@ from .utils import (
     read_colmap_extrinsics_text,
     read_colmap_intrinsics_binary,
     read_colmap_intrinsics_text,
+    get_worker_id,
 )
 
 
@@ -55,8 +57,10 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         split="train",
         downsample_factor=1,
         test_split_interval=8,
+        test_frame_suffix="_test",
         ray_jitter=None,
-        exif_exposures: Optional[list[Optional[float]]] = None,
+        use_border_mask=True,
+        border_mask_path="mask_train.png",
     ):
         self.path = path
         self.device = device
@@ -64,7 +68,11 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.downsample_factor = downsample_factor
         self.ray_jitter = ray_jitter
         self.test_split_interval = test_split_interval
-        self._all_exif_exposures = exif_exposures  # Exposure values for all frames (pre-split)
+        self.test_frame_suffix = test_frame_suffix
+        self.use_border_mask = use_border_mask
+        self.border_mask_path = border_mask_path
+        self._border_mask_flat: np.ndarray | None = None
+        self._border_mask_shape: tuple[int, int] | None = None
 
         # Worker-based GPU cache for multiprocessing compatibility
         self._worker_gpu_cache = {}
@@ -78,42 +86,86 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
         # Get the scene data
         self.load_intrinsics_and_extrinsics()
-
-        # Build mapping from COLMAP camera_id to 0-based contiguous index
-        # This is needed for post-processing which expects 0-based camera indices
-        sorted_camera_ids = sorted(self.cam_intrinsics.keys())
-        self._camera_id_to_idx = {cam_id: idx for idx, cam_id in enumerate(sorted_camera_ids)}
-
         self.n_frames = len(self.cam_extrinsics)
         self.load_camera_data()
-        indices = np.arange(self.n_frames)
+
+        suffix = self.test_frame_suffix
+        if self.split == "train":
+            split_mask = np.array([not os.path.splitext(os.path.basename(p))[0].endswith(suffix) for p in self.image_paths])
+        else:
+            split_mask = np.array([os.path.splitext(os.path.basename(p))[0].endswith(suffix) for p in self.image_paths])
+
+        self.cam_extrinsics = [e for e, keep in zip(self.cam_extrinsics, split_mask) if keep]
+        self.poses = self.poses[split_mask].astype(np.float32)
+        self.image_paths = self.image_paths[split_mask]
+        self.camera_centers = self.camera_centers[split_mask]
+        self.mask_paths = self.mask_paths[split_mask]
+        self.dilated_mask_paths = self.dilated_mask_paths[split_mask]
+
+        # Update frame count after split filtering
+        self.n_frames = self.poses.shape[0]
+        print(f"After split filtering ({self.split}): {self.n_frames} frames")
+        
+        # Create boolean mask for filtering
+        indices_mask = np.ones(self.n_frames, dtype=bool)
 
         # If test_split_interval is set, every test_split_interval frame will be excluded from the training set
         # If test_split_interval is non-positive, all images will be used for training and testing
         if self.test_split_interval > 0:
+            # Extract frame numbers from image paths
+            # Assuming paths are like "camera1/frame_001.png", "camera2/frame_001.png", etc.
+            frame_numbers = []
+            for path in self.image_paths:
+                # Extract frame number from path
+                filename = path.split('/')[-1]  # Get filename part
+                # Remove file extension and extract number after last underscore
+                filename_no_ext = filename.split('.')[0]  # Remove extension (.png, .jpg, etc.)
+                frame_num = int(filename_no_ext.split('_')[-1])  # Extract number after last underscore
+                frame_numbers.append(frame_num)
+            
+            frame_numbers = np.array(frame_numbers)
+            
+            # Debug: Print frame number statistics
+            print(f"Split: {self.split}")
+            print(f"Total frames: {len(frame_numbers)}")
+            print(f"Frame number range: {frame_numbers.min()} to {frame_numbers.max()}")
+            
+            # Get unique frame numbers and sort them
+            unique_frame_numbers = np.unique(frame_numbers)
+            print(f"Unique frame numbers: {len(unique_frame_numbers)}")
+            print(f"First few unique frame numbers: {unique_frame_numbers[:10]}")
+            print(f"Test split interval: {self.test_split_interval}")
+            
+            # Apply split logic to the POSITION of unique frame numbers, not their values
+            # This ensures every Nth unique frame goes to test, regardless of actual frame numbers
+            test_frame_positions = np.arange(len(unique_frame_numbers)) % self.test_split_interval == 0
+            test_frame_numbers = set(unique_frame_numbers[test_frame_positions])
+            
+            print(f"Test frame numbers: {sorted(list(test_frame_numbers))[:10]}...")
+            
+            # Create mask based on whether each frame's number is in the test set
             if self.split == "train":
-                indices = np.mod(indices, self.test_split_interval) != 0
-            else:
-                indices = np.mod(indices, self.test_split_interval) == 0
+                indices_mask = np.array([frame_num not in test_frame_numbers for frame_num in frame_numbers])
+            else:  # validation/test split
+                indices_mask = np.array([frame_num in test_frame_numbers for frame_num in frame_numbers])
+            
+            # Debug: Print split results
+            print(f"Frames selected for {self.split}: {indices_mask.sum()}")
+            if indices_mask.sum() == 0:
+                print("ERROR: No frames selected for this split!")
+                raise ValueError(f"No frames selected for split '{self.split}'. Check your test_split_interval and frame numbering.")
 
-        self.cam_extrinsics = [self.cam_extrinsics[i] for i in np.where(indices)[0]]
-        self.poses = self.poses[indices].astype(np.float32)
-
-        # numpy str array of image paths and mask paths
-        self.image_paths = self.image_paths[indices]
-        self.mask_paths = self.mask_paths[indices]
-
-        self.camera_centers = self.camera_centers[indices]
+        # Apply the filtering
+        indices = np.where(indices_mask)[0]
+        
+        self.cam_extrinsics = [self.cam_extrinsics[i] for i in indices]
+        self.poses = self.poses[indices_mask].astype(np.float32)
+        self.image_paths = self.image_paths[indices_mask]  # numpy str array of image paths
+        self.camera_centers = self.camera_centers[indices_mask]
         self.center, self.length_scale, self.scene_bbox = self.compute_spatial_extents()
-
-        # Apply split indices to EXIF exposures
-        if self._all_exif_exposures is not None:
-            self.exif_exposures: Optional[list[Optional[float]]] = [
-                self._all_exif_exposures[i] for i in np.where(indices)[0]
-            ]
-        else:
-            self.exif_exposures = None
-
+        self.mask_paths = self.mask_paths[indices_mask] 
+        self.dilated_mask_paths = self.dilated_mask_paths[indices_mask]
+        
         # Update the number of frames to only include the samples from the split
         self.n_frames = self.poses.shape[0]
 
@@ -133,7 +185,9 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             self.cam_intrinsics = read_colmap_intrinsics_text(cameras_intrinsic_file)
 
     def get_images_folder(self):
-        downsample_suffix = "" if self.downsample_factor == 1 else f"_{self.downsample_factor}"
+        downsample_suffix = (
+            "" if self.downsample_factor == 1 else f"_{self.downsample_factor}"
+        )
         return f"images{downsample_suffix}"
 
     def load_camera_data(self):
@@ -148,24 +202,23 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
     def _store_camera_params_cpu(self):
         """Store camera parameters on CPU for multiprocessing compatibility."""
 
-        def create_pinhole_camera(focalx, focaly, w, h, cx=None, cy=None):
-            cx = cx if cx is not None else w / 2.0
-            cy = cy if cy is not None else h / 2.0
+        def create_pinhole_camera(focalx, focaly, w, h):
             # Generate UV coordinates
             u = np.tile(np.arange(w), h)
             v = np.arange(h).repeat(w)
             out_shape = (1, h, w, 3)
             params = OpenCVPinholeCameraModelParameters(
-                resolution=np.array([w, h], dtype=np.uint64),
+                resolution=np.array([w, h], dtype=np.int64),
                 shutter_type=ShutterType.GLOBAL,
-                principal_point=np.array([cx, cy], dtype=np.float32),
+                principal_point=np.array([w, h], dtype=np.float32) / 2,
                 focal_length=np.array([focalx, focaly], dtype=np.float32),
                 radial_coeffs=np.zeros((6,), dtype=np.float32),
                 tangential_coeffs=np.zeros((2,), dtype=np.float32),
                 thin_prism_coeffs=np.zeros((4,), dtype=np.float32),
             )
-            rays_o_cam, rays_d_cam = pinhole_camera_rays(u, v, focalx, focaly, w, h, self.ray_jitter, cx=cx, cy=cy)
-            pixel_coords = create_pixel_coords(w, h)
+            rays_o_cam, rays_d_cam = pinhole_camera_rays(
+                u, v, focalx, focaly, w, h, self.ray_jitter
+            )
             return (
                 params.to_dict(),
                 torch.tensor(rays_o_cam, dtype=torch.float32).reshape(out_shape),
@@ -173,21 +226,135 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                 type(params).__name__,
                 pixel_coords,
             )
+        import torch
+        import numpy as np
+
+        def export_rays_to_ply(rays_tensor, filename="fisheye_rays.ply", 
+                            subsample_factor=1, ray_length=1.0):
+            """
+            Quick export of camera rays to PLY format
+            
+            Args:
+                rays_tensor: torch.Tensor [N, 3] of ray directions
+                filename: output PLY filename
+                subsample_factor: factor to reduce number of points (1 = all points)
+                ray_length: length to scale the rays for visualization
+            """
+            
+            # Subsample to manageable size
+            rays_np = rays_tensor[::subsample_factor].cpu().numpy()
+            
+            # Scale rays and ensure they're unit vectors
+            rays_normalized = rays_np / np.linalg.norm(rays_np, axis=1, keepdims=True)
+            points = ray_length * rays_normalized
+            
+            # Color by direction for nice visualization
+            # Map X,Y,Z to R,G,B (shift and scale to [0,1])
+            colors = (rays_normalized + 1.0) / 2.0 * 255
+            colors = np.clip(colors, 0, 255).astype(np.uint8)
+            
+            # Write PLY file
+            n_points = len(points)
+            
+            with open(filename, 'w') as f:
+                # PLY header
+                f.write("ply\n")
+                f.write("format ascii 1.0\n")
+                f.write(f"element vertex {n_points}\n")
+                f.write("property float x\n")
+                f.write("property float y\n") 
+                f.write("property float z\n")
+                f.write("property uchar red\n")
+                f.write("property uchar green\n")
+                f.write("property uchar blue\n")
+                f.write("end_header\n")
+                
+                # Write vertices with colors
+                for i in range(n_points):
+                    x, y, z = points[i]
+                    r, g, b = colors[i]
+                    f.write(f"{x:.6f} {y:.6f} {z:.6f} {r} {g} {b}\n")
+            
+            print(f"Exported {n_points} ray endpoints to {filename}")
+            print(f"Original rays: {rays_tensor.shape[0]:,}")
+            print(f"Subsampled by factor {subsample_factor}")
+
+        def export_rays_with_lines_ply(rays_tensor, filename="fisheye_rays_lines.ply",
+                                    subsample_factor=100, ray_length=1.0):
+            """
+            Export rays as line segments from origin to endpoints
+            """
+            
+            # Subsample
+            rays_np = rays_tensor[::subsample_factor].cpu().numpy()
+            rays_normalized = rays_np / np.linalg.norm(rays_np, axis=1, keepdims=True)
+            
+            n_rays = len(rays_normalized)
+            
+            # Create vertices: origin + endpoints
+            vertices = []
+            edges = []
+            
+            # Add origin once
+            vertices.append([0.0, 0.0, 0.0])
+            origin_idx = 0
+            
+            # Add ray endpoints and create edges
+            for i, ray in enumerate(rays_normalized):
+                endpoint = ray_length * ray
+                vertices.append(endpoint)
+                endpoint_idx = i + 1
+                edges.append([origin_idx, endpoint_idx])
+            
+            vertices = np.array(vertices)
+            n_vertices = len(vertices)
+            n_edges = len(edges)
+            
+            # Write PLY with edges
+            with open(filename, 'w') as f:
+                f.write("ply\n")
+                f.write("format ascii 1.0\n")
+                f.write(f"element vertex {n_vertices}\n")
+                f.write("property float x\n")
+                f.write("property float y\n")
+                f.write("property float z\n")
+                f.write(f"element edge {n_edges}\n")
+                f.write("property int vertex1\n")
+                f.write("property int vertex2\n")
+                f.write("end_header\n")
+                
+                # Write vertices
+                for vertex in vertices:
+                    f.write(f"{vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n")
+                
+                # Write edges
+                for edge in edges:
+                    f.write(f"{edge[0]} {edge[1]}\n")
+            
+            print(f"Exported {n_rays} rays as line segments to {filename}")
+
+        # Usage with your data:
+        # rays = torch.tensor([...])  # Your 14745600x3 tensor
+
 
         def create_fisheye_camera(params, w, h):
             # Generate UV coordinates
             u = np.tile(np.arange(w), h)
             v = np.arange(h).repeat(w)
             out_shape = (1, h, w, 3)
-            resolution = np.array([w, h]).astype(np.uint64)
+            resolution = np.array([w, h]).astype(np.int64)
             principal_point = params[2:4].astype(np.float32)
             focal_length = params[0:2].astype(np.float32)
             radial_coeffs = params[4:].astype(np.float32)
+
             # Estimate max angle for fisheye
-            max_radius_pixels = compute_max_radius(resolution.astype(np.float64), principal_point)
+            max_radius_pixels = compute_max_radius(
+                resolution.astype(np.float64), principal_point
+            )
+            max_radius_pixels = principal_point[0]
             fov_angle_x = 2.0 * max_radius_pixels / focal_length[0]
             fov_angle_y = 2.0 * max_radius_pixels / focal_length[1]
-            max_angle = np.max([fov_angle_x, fov_angle_y]) / 2.0
+            max_angle = np.max([fov_angle_x, fov_angle_y]) / 2.0 # np.pi/2
 
             params = OpenCVFisheyeCameraModelParameters(
                 principal_point=principal_point,
@@ -197,12 +364,45 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                 max_angle=max_angle,
                 shutter_type=ShutterType.GLOBAL,
             )
-            camera_model = ncore.sensors.CameraModel.from_parameters(params, device="cpu", dtype=torch.float32)
-            int_pixel_coords = torch.tensor(np.stack([u, v], axis=1), dtype=torch.int32)
-            image_points = camera_model.pixels_to_image_points(int_pixel_coords)
-            rays_d_cam = camera_model.image_points_to_camera_rays(image_points)
+            pixel_coords = torch.tensor(np.stack([u, v], axis=1), dtype=torch.int32)
+            image_points = pixels_to_image_points(pixel_coords)
+            rays_d_cam = image_points_to_camera_rays(params, image_points)
             rays_o_cam = torch.zeros_like(rays_d_cam)
-            pixel_coords = create_pixel_coords(w, h)
+            
+            self.use_circular_mask = False
+            if self.use_circular_mask:
+                # If you want to render a perfect circle use this mask. (Todo: metrics)
+                rays_d_cam_full = rays_d_cam
+                cx, cy = w / 2.0, h / 2.0
+                R = min(w, h) / 2.0
+                
+                # Create coordinate grids
+                x_coords = u.reshape(h, w)
+                y_coords = v.reshape(h, w)
+                
+                # Calculate distance from center for each pixel
+                r = np.sqrt((x_coords - cx) ** 2 + (y_coords - cy) ** 2)
+                
+                # Create circular mask
+                mask = (r < (R-25))
+                mask_flat = mask.flatten()
+                
+                # Apply mask: set rays outside the circle to [0, 0, 1] (forward direction)
+                rays_d_cam = rays_d_cam_full.clone()
+                rays_d_cam[~mask_flat] = float('nan')
+                rays_o_cam = torch.zeros_like(rays_d_cam)
+                self.use_border_mask = False
+
+            if self.use_border_mask:
+                if self._border_mask_flat is None or self._border_mask_shape != (h, w):
+                    mask_np = cv2.imread(self.border_mask_path, cv2.IMREAD_GRAYSCALE)
+                    if mask_np.shape != (h, w):
+                        mask_np = cv2.resize(mask_np, (w, h), interpolation=cv2.INTER_NEAREST)
+                    self._border_mask_flat = mask_np.astype(bool).flatten()
+                    self._border_mask_shape = (h, w)
+                rays_d_cam[~self._border_mask_flat] = float('nan')
+                rays_o_cam = torch.zeros_like(rays_d_cam)
+
             return (
                 params.to_dict(),
                 rays_o_cam.to(torch.float32).reshape(out_shape),
@@ -211,16 +411,16 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                 pixel_coords,
             )
 
-        cam_id_to_image_name = {extr.camera_id: extr.name for extr in self.cam_extrinsics}
+        cam_id_to_image_name = {
+            extr.camera_id: extr.name for extr in self.cam_extrinsics
+        }
 
         for intr in self.cam_intrinsics.values():
             full_width = intr.width
             full_height = intr.height
 
             image_name = cam_id_to_image_name[intr.id]
-            image_name = (
-                os.path.join(os.path.split(image_name)[1], "") if self.get_images_folder() in image_name else image_name
-            )
+            image_name = os.path.join(os.path.split(image_name)[1], '') if self.get_images_folder() in image_name else image_name
             image_path = os.path.join(self.path, self.get_images_folder(), image_name)
 
             try:
@@ -228,12 +428,16 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                 with Image.open(image_path) as img:
                     width, height = img.size
             except FileNotFoundError:
-                logger.error(f"Image {image_path} not found. Cannot determine dimensions for intrinsic ID {intr.id}.")
+                logger.error(
+                    f"Image {image_path} not found. Cannot determine dimensions for intrinsic ID {intr.id}."
+                )
                 continue
 
             # Calculate scaling factor to match the image dimensions to the intrinsic dimensions
             scaling_factor = int(round(intr.height / height))
-            expected_size = f"{full_width / scaling_factor}x{full_height / scaling_factor}"
+            expected_size = (
+                f"{full_width / scaling_factor}x{full_height / scaling_factor}"
+            )
             assert (
                 abs(full_width / scaling_factor - width) <= 1
             ), f"Scaled image dimension {expected_size} (factor {scaling_factor}x) does not match the actual image dimensions {width}x{height}"
@@ -243,19 +447,15 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
             if intr.model == "SIMPLE_PINHOLE":
                 focal_length = intr.params[0] / scaling_factor
-                cx = intr.params[1] / scaling_factor
-                cy = intr.params[2] / scaling_factor
                 self.intrinsics[intr.id] = create_pinhole_camera(
-                    focal_length, focal_length, width, height, cx=cx, cy=cy
+                    focal_length, focal_length, width, height
                 )
 
             elif intr.model == "PINHOLE":
                 focal_length_x = intr.params[0] / scaling_factor
                 focal_length_y = intr.params[1] / scaling_factor
-                cx = intr.params[2] / scaling_factor
-                cy = intr.params[3] / scaling_factor
                 self.intrinsics[intr.id] = create_pinhole_camera(
-                    focal_length_x, focal_length_y, width, height, cx=cx, cy=cy
+                    focal_length_x, focal_length_y, width, height
                 )
 
             elif intr.model == "OPENCV_FISHEYE":
@@ -272,7 +472,8 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.poses = []
         self.image_paths = []
         self.mask_paths = []
-
+        self.dilated_mask_paths = []
+        
         cam_centers = []
         for extr in logger.track(
             self.cam_extrinsics,
@@ -291,16 +492,24 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
             image_path = os.path.join(self.path, self.get_images_folder(), extr.name)
             self.image_paths.append(image_path)
-            self.mask_paths.append(os.path.splitext(image_path)[0] + "_mask.png")
 
+            # Mask path
+            images_folder = self.get_images_folder()
+            downsample_suffix = "" if self.downsample_factor == 1 else f"_{self.downsample_factor}"
+            masks_base = f"masks{downsample_suffix}"
+            rel_path = os.path.relpath(image_path, os.path.join(self.path, images_folder))
+            mask_stem = os.path.splitext(rel_path)[0] + "_mask.png"
+            self.mask_paths.append(os.path.join(self.path, masks_base, f"masks-1{downsample_suffix}", mask_stem))
+            self.dilated_mask_paths.append(os.path.join(self.path, masks_base, f"masks-20{downsample_suffix}", mask_stem))
+            
         self.camera_centers = np.array(cam_centers)
         _, diagonal = get_center_and_diag(self.camera_centers)
         self.cameras_extent = diagonal * 1.1
 
         self.poses = np.stack(self.poses)
-
         self.image_paths = np.stack(self.image_paths, dtype=str)
         self.mask_paths = np.stack(self.mask_paths, dtype=str)
+        self.dilated_mask_paths = np.stack(self.dilated_mask_paths, dtype=str)
 
     def _lazy_worker_intrinsics_cache(self):
         """Create intrinsics cache for a specific worker."""
@@ -316,18 +525,15 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                 rays_ori,
                 rays_dir,
                 camera_name,
-                pixel_coords,
             ) in self.intrinsics.items():
                 # Create new GPU tensors for this worker
                 worker_rays_ori = rays_ori.to(self.device, non_blocking=True)
                 worker_rays_dir = rays_dir.to(self.device, non_blocking=True)
-                worker_pixel_coords = pixel_coords.to(self.device, non_blocking=True)
                 worker_intrinsics[intr_id] = (
                     params_dict,
                     worker_rays_ori,
                     worker_rays_dir,
                     camera_name,
-                    worker_pixel_coords,
                 )
             self._worker_gpu_cache[worker_id] = worker_intrinsics
 
@@ -451,12 +657,16 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
         # Only add mask to dictionary if it exists
         if os.path.exists(mask_path := self.mask_paths[idx]):
-            mask = torch.from_numpy(np.array(Image.open(mask_path).convert("L"))).reshape(1, actual_h, actual_w, 1)
+            mask = torch.from_numpy(
+                np.array(Image.open(mask_path).convert("L"))
+            ).reshape(1, actual_h, actual_w, 1)
             output_dict["mask"] = mask
 
-        # Add EXIF exposure if available for this frame
-        if self.exif_exposures is not None and self.exif_exposures[idx] is not None:
-            output_dict["exposure"] = torch.tensor(self.exif_exposures[idx], dtype=torch.float32)
+        if os.path.exists(dilated_mask_path := self.dilated_mask_paths[idx]):
+            dilated_mask = torch.from_numpy(
+                np.array(Image.open(dilated_mask_path).convert("L"))
+            ).reshape(1, actual_h, actual_w, 1)
+            output_dict["dilated_mask"] = dilated_mask       
 
         return output_dict
 
@@ -473,7 +683,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         # Get intrinsics for current worker
         worker_intrinsics = self._lazy_worker_intrinsics_cache()
 
-        camera_params_dict, rays_ori, rays_dir, camera_name, pixel_coords = worker_intrinsics[intr]
+        camera_params_dict, rays_ori, rays_dir, camera_name = worker_intrinsics[intr]
 
         sample = {
             "rgb_gt": data,
@@ -490,10 +700,11 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             mask = batch["mask"][0].to(self.device, non_blocking=True) / 255.0
             mask = (mask > 0.5).to(torch.float32)
             sample["mask"] = mask
-
-        # Add exposure prior from EXIF if available (move to GPU)
-        if "exposure" in batch and batch["exposure"][0] is not None:
-            sample["exposure"] = batch["exposure"].to(self.device)
+        
+        if "dilated_mask" in batch:
+            dilated_mask = batch["dilated_mask"][0].to(self.device, non_blocking=True) / 255.0
+            dilated_mask = (dilated_mask > 0.5).to(torch.float32)
+            sample["dilated_mask"] = dilated_mask
 
         return Batch(**sample)
 
@@ -515,7 +726,9 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                     [0.0, 0.0, 0.0, 1.0],
                 ]
             )
-            trans_mat_world_to_camera = camera_convention_rot @ trans_mat_world_to_camera
+            trans_mat_world_to_camera = (
+                camera_convention_rot @ trans_mat_world_to_camera
+            )
 
             # Get camera ID and corresponding intrinsics
             camera_id = self.get_intrinsics_idx(i_cam)
@@ -533,7 +746,9 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
 
             assert image_data.dtype == np.uint8, "Image data must be of type uint8"
             rgb = image_data.reshape(h, w, 3) / np.float32(255.0)
-            assert rgb.dtype == np.float32, f"RGB image must be float32, got {rgb.dtype}"
+            assert (
+                rgb.dtype == np.float32
+            ), f"RGB image must be float32, got {rgb.dtype}"
 
             cam_list.append(
                 {

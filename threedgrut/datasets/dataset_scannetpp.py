@@ -20,6 +20,7 @@ from .utils import read_colmap_extrinsics_text, read_colmap_intrinsics_text
 
 
 class ScannetppDataset(ColmapDataset):
+
     def __init__(
         self,
         path,
@@ -29,7 +30,9 @@ class ScannetppDataset(ColmapDataset):
         test_split_interval=8,
         ray_jitter=None,
     ):
-        super(ScannetppDataset, self).__init__(path, device, split, downsample_factor, test_split_interval, ray_jitter)
+        super(ScannetppDataset, self).__init__(
+            path, device, split, downsample_factor, test_split_interval, ray_jitter
+        )
 
     def load_intrinsics_and_extrinsics(self):
         cameras_extrinsic_file = os.path.join(self.path, "colmap", "images.txt")
@@ -38,8 +41,9 @@ class ScannetppDataset(ColmapDataset):
         self.cam_intrinsics = read_colmap_intrinsics_text(cameras_intrinsic_file)
 
         # Remove camera distortions because images are already undistorted
-        for intr in self.cam_intrinsics.values():
-            intr.params[4:] = 0.0
+        """for intr in self.cam_intrinsics.values():
+            intr.params[4:] = 0.0"""
 
     def get_images_folder(self):
+        return "images"
         return "image_undistorted_fisheye"

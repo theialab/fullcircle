@@ -27,11 +27,12 @@ import threedgrt_tracer
 import threedgrut.model.background as background
 import threedgut_tracer
 from threedgrut.datasets.protocols import Batch
-from threedgrut.datasets.utils import read_colmap_points3D_text, read_next_bytes
-from threedgrut.export import PLYExporter
+from threedgrut.datasets.utils import read_next_bytes, read_colmap_points3D_text
 from threedgrut.export.base import ExportableModel
-from threedgrut.model.geometry import k_nearest_neighbors, nearest_neighbor_dist_cpuKD
-from threedgrut.optimizers import SelectiveAdam
+from threedgrut.export.ingp_exporter import INGPExporter
+from threedgrut.export.ply_exporter import PLYExporter
+from threedgrut.model.geometry import nearest_neighbor_dist_cpuKD, k_nearest_neighbors
+import threedgrt_tracer, threedgut_tracer
 from threedgrut.utils.logger import logger
 from threedgrut.utils.misc import (
     get_activation_function,
@@ -39,11 +40,10 @@ from threedgrut.utils.misc import (
     quaternion_to_so3,
     sh_degree_to_num_features,
     sh_degree_to_specular_dim,
-    to_np,
-    to_torch,
+    to_np, to_torch, quaternion_to_so3
 )
 from threedgrut.utils.render import RGB2SH
-
+from threedgrut.optimizers import SelectiveAdam
 
 class MixtureOfGaussians(torch.nn.Module, ExportableModel):
     """ """
@@ -199,9 +199,6 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
         else:
             raise ValueError(f"Unknown rendering method: {conf.render.method}")
 
-        # State of gradients of Gaussian parameters
-        self._gaussians_frozen = False
-
     @torch.no_grad()
     def build_acc(self, rebuild=True):
         self.renderer.build_acc(self, rebuild)
@@ -256,6 +253,7 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
                 file_pts = torch.tensor(pts, dtype=torch.float32, device=self.device)
                 file_rgb = torch.tensor(rgb, dtype=torch.uint8, device=self.device)
             else:
+
                 with open(points_file, "rb") as file:
                     n_pts = read_next_bytes(file, 8, "Q")[0]
                     logger.info(f"Found {n_pts} colmap points")
@@ -278,53 +276,8 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
                 file_rgb = torch.tensor(file_rgb, dtype=torch.uint8, device=self.device)
 
         assert file_rgb.dtype == torch.uint8, "Expecting RGB values to be in [0, 255] range"
-        self.default_initialize_from_points(
-            file_pts,
-            observer_pts,
-            file_rgb,
-            use_observer_pts=self.conf.initialization.use_observation_points,
-        )
-
-    def init_from_fused_point_cloud(self, pc_path: str, observer_pts):
-        """
-        Initialize gaussians from an fused point cloud PLY file.
-        Similar to init_from_colmap but loads from a given PLY file instead of sparse/0/points3D.txt
-
-        Args:
-            pc_path: Path to the PLY point cloud file
-            observer_pts: Observer points tensor for scale initialization
-        """
-        logger.info(f"Loading fused point cloud from {pc_path}...")
-
-        # Read PLY file
-        plydata = PlyData.read(pc_path)
-        vertices = plydata["vertex"]
-
-        # Extract XYZ coordinates
-        xyz = np.stack([vertices["x"], vertices["y"], vertices["z"]], axis=1).astype(np.float32)
-
-        # Extract RGB colors (check if they exist)
-        if "red" in vertices and "green" in vertices and "blue" in vertices:
-            rgb = np.stack([vertices["red"], vertices["green"], vertices["blue"]], axis=1).astype(np.uint8)
-        else:
-            # If no colors, initialize with random colors
-            logger.warning("No RGB data found in point cloud, using random colors")
-            rgb = np.random.randint(0, 256, size=(len(vertices), 3), dtype=np.uint8)
-
-        # Convert to torch tensors
-        file_pts = torch.tensor(xyz, dtype=torch.float32, device=self.device)
-        file_rgb = torch.tensor(rgb, dtype=torch.uint8, device=self.device)
-
-        logger.info(f"Loaded {len(file_pts)} points from accumulated point cloud")
-
-        # Initialize using the same method as COLMAP
-        assert file_rgb.dtype == torch.uint8, "Expecting RGB values to be in [0, 255] range"
-        self.default_initialize_from_points(
-            file_pts,
-            observer_pts,
-            file_rgb,
-            use_observer_pts=self.conf.initialization.use_observation_points,
-        )
+        self.default_initialize_from_points(file_pts, observer_pts, file_rgb, 
+                                            use_observer_pts=self.conf.initialization.use_observation_points)
 
     def init_from_pretrained_point_cloud(self, pc_path: str, set_optimizable_parameters: bool = True):
         data = PlyData.read(pc_path)
@@ -528,21 +481,6 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
             self.setup_optimizer(state_dict=checkpoint["optimizer"])
         self.validate_fields()
 
-    def init_from_lidar(self, point_cloud, observer_pts):
-        """
-        Initialize from lidar point cloud.
-        Observer points can be any set locations that observation came from.
-        Camera centers, ray source points, etc. They are used to estimate initial scales.
-        """
-        logger.info(f"Initializing based on lidar point cloud ...")
-
-        self.default_initialize_from_points(
-            point_cloud.xyz_end.to(device=self.device),
-            observer_pts,
-            point_cloud.color,
-            use_observer_pts=self.conf.initialization.use_observation_points,
-        )
-
     def default_initialize_from_points(self, pts, observer_pts, colors=None, use_observer_pts=True):
         """
         Given an Nx3 array of points (and optionally Nx3 rgb colors),
@@ -558,7 +496,7 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
         positions = pts
 
         # Random rotations
-        rots = torch.rand((N, 4), dtype=dtype, device=self.device, generator=rng)
+        rots = torch.rand((N, 4), dtype=dtype, device=self.device)
 
         if use_observer_pts:
             # NOTE: it seems we get different scales compared to the original 3DGS implementation
@@ -586,7 +524,7 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
 
         # set colors, random if they weren't given
         if colors is None:
-            colors = torch.randint(0, 256, (N, 3), dtype=torch.uint8, device=self.device, generator=rng)
+            colors = torch.randint(0, 256, (N, 3), dtype=torch.uint8, device=self.device)
 
         features_albedo = to_torch(RGB2SH(to_np(colors.float() / 255.0)), device=self.device)
 
@@ -725,9 +663,9 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
         return self.renderer.render(self, inputs)
 
     @torch.no_grad()
-    def export_ply(self, mogt_path: str):
-        exporter = PLYExporter()
-        exporter.export(self, Path(mogt_path))
+    def export_ingp(self, mogt_path: str, force_half: bool):
+        exporter = INGPExporter()
+        exporter.export(self, Path(mogt_path), force_half=force_half)
 
     @torch.no_grad()
     def init_from_ply(self, mogt_path: str, init_model=True):
@@ -800,12 +738,67 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
             self.setup_optimizer()
             self.validate_fields()
 
+    @torch.no_grad()
+    def export_ply(self, mogt_path: str):
+        exporter = PLYExporter()
+        exporter.export(self, Path(mogt_path))
+
+    @torch.no_grad()
+    def init_from_ply(self, mogt_path:str, init_model=True):
+        plydata = PlyData.read(mogt_path)
+
+        mogt_pos = np.stack((np.asarray(plydata.elements[0]["x"]),
+                        np.asarray(plydata.elements[0]["y"]),
+                        np.asarray(plydata.elements[0]["z"])),  axis=1)
+        mogt_densities = np.asarray(plydata.elements[0]["opacity"])[..., np.newaxis]
+
+        num_gaussians = mogt_pos.shape[0]
+        mogt_albedo = np.zeros((num_gaussians, 3))
+        mogt_albedo[:, 0] = np.asarray(plydata.elements[0]["f_dc_0"])
+        mogt_albedo[:, 1] = np.asarray(plydata.elements[0]["f_dc_1"])
+        mogt_albedo[:, 2] = np.asarray(plydata.elements[0]["f_dc_2"])
+
+        extra_f_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_rest_")]
+        extra_f_names = sorted(extra_f_names, key = lambda x: int(x.split('_')[-1]))
+        num_speculars = (self.max_n_features + 1) ** 2 - 1
+        assert len(extra_f_names)==3*num_speculars
+        mogt_specular = np.zeros((num_gaussians, len(extra_f_names)))
+        for idx, attr_name in enumerate(extra_f_names):
+            mogt_specular[:, idx] = np.asarray(plydata.elements[0][attr_name])
+        mogt_specular = mogt_specular.reshape((num_gaussians,3,num_speculars))
+        mogt_specular = mogt_specular.transpose(0, 2, 1).reshape((num_gaussians,num_speculars*3))
+
+        scale_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("scale_")]
+        scale_names = sorted(scale_names, key = lambda x: int(x.split('_')[-1]))
+        mogt_scales = np.zeros((num_gaussians, len(scale_names)))
+        for idx, attr_name in enumerate(scale_names):
+            mogt_scales[:, idx] = np.asarray(plydata.elements[0][attr_name])
+
+        rot_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("rot")]
+        rot_names = sorted(rot_names, key = lambda x: int(x.split('_')[-1]))
+        mogt_rotation = np.zeros((num_gaussians, len(rot_names)))
+        for idx, attr_name in enumerate(rot_names):
+            mogt_rotation[:, idx] = np.asarray(plydata.elements[0][attr_name])
+
+        self.positions = torch.nn.Parameter(torch.tensor(mogt_pos, dtype=self.positions.dtype,device=self.device))
+        self.features_albedo = torch.nn.Parameter(torch.tensor(mogt_albedo, dtype=self.features_albedo.dtype,device=self.device))
+        self.features_specular = torch.nn.Parameter(torch.tensor(mogt_specular,dtype=self.features_specular.dtype,device=self.device))
+        self.density = torch.nn.Parameter(torch.tensor(mogt_densities,dtype=self.density.dtype,device=self.device))
+        self.scale = torch.nn.Parameter(torch.tensor(mogt_scales,dtype=self.scale.dtype,device=self.device))
+        self.rotation = torch.nn.Parameter(torch.tensor(mogt_rotation,dtype=self.rotation.dtype,device=self.device))
+
+        self.n_active_features = self.max_n_features
+
+        if init_model:
+            self.set_optimizable_parameters()
+            self.setup_optimizer()
+            self.validate_fields()
+
     def copy_fields(self, other, deepcopy=False):
-        """Copies fields from other onto self"""
+        """ Copies fields from other onto self """
         if self.optimizer is not None:
-            raise NotImplementedError(
-                "Operations that create copies of the model during training " "are currently not supported."
-            )
+            raise NotImplementedError("Operations that create copies of the model during training "
+                                      "are currently not supported.")
 
         if deepcopy:
             self.positions = torch.nn.Parameter(other.positions.clone())
@@ -814,7 +807,7 @@ class MixtureOfGaussians(torch.nn.Module, ExportableModel):
             self.density = torch.nn.Parameter(other.density.clone())
             self.features_albedo = torch.nn.Parameter(other.features_albedo.clone())
             self.features_specular = torch.nn.Parameter(other.features_specular.clone())
-        else:  # shared tensors
+        else: # shared tensors
             self.positions = torch.nn.Parameter(other.positions)
             self.rotation = torch.nn.Parameter(other.rotation)
             self.scale = torch.nn.Parameter(other.scale)

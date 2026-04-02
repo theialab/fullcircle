@@ -104,13 +104,7 @@ class Tracer:
 
         @staticmethod
         def backward(
-            ctx,
-            ray_radiance_grd,
-            ray_density_grd,
-            ray_hit_distance_grd,
-            ray_normals_grd,
-            ray_hits_count_grd_UNUSED,
-            mog_visibility_grd_UNUSED,
+            ctx, ray_radiance_grd, ray_density_grd, ray_hit_distance_grd, ray_normals_grd, ray_hits_count_grd_UNUSED, mog_visibility_grd_UNUSED
         ):
             (
                 ray_to_world,
@@ -219,8 +213,8 @@ class Tracer:
 
             if self.frame_timer is not None:
                 self.frame_timer.start()
-
-            pred_rgb, pred_opacity, pred_dist, pred_normals, hits_count, mog_visibility = Tracer._Autograd.apply(
+    
+            (pred_rgb, pred_opacity, pred_dist, pred_normals, hits_count, mog_visibility) = Tracer._Autograd.apply(
                 self.tracer_wrapper,
                 frame_id,
                 gpu_batch.T_to_world.contiguous(),

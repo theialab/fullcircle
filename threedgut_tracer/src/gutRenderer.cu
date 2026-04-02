@@ -395,23 +395,6 @@ threedgut::Status threedgut::GUTRenderer::renderForward(const RenderParameters& 
             (const tcnn::vec4*)m_forwardContext->particlesProjectedConicOpacity.data(),
             (const float*)m_forwardContext->particlesGlobalDepth.data(),
             (const float*)m_forwardContext->particlesPrecomputedFeatures.data(),
-            parameters.m_dptrParametersBuffer,
-            tcnn::uvec2{tileGrid.x, tileGrid.y});
-#else
-        ::render<<<dim3{tileGrid.x, tileGrid.y, 1u}, dim3{GUTParameters::Tiling::BlockX, GUTParameters::Tiling::BlockY, 1u}, 0, cudaStream>>>(
-            params, // threedgut::RenderParameters params
-            (const tcnn::uvec2*)m_forwardContext->sortedTileRangeIndices.data(),
-            (const uint32_t*)m_forwardContext->sortedTileParticleIdx.data(),
-            (const tcnn::vec3*)sensorRayOriginCudaPtr,
-            (const tcnn::vec3*)sensorRayDirectionCudaPtr,
-            sensorPoseToMat(sensorPoseInv),
-            worldHitCountCudaPtr,
-            worldHitDistanceCudaPtr,
-            radianceDensityCudaPtr,
-            (const tcnn::vec2*)m_forwardContext->particlesProjectedPosition.data(),
-            (const tcnn::vec4*)m_forwardContext->particlesProjectedConicOpacity.data(),
-            (const float*)m_forwardContext->particlesGlobalDepth.data(),
-            (const float*)m_forwardContext->particlesPrecomputedFeatures.data(),
             parameters.m_dptrParametersBuffer);
 #endif
         CUDA_CHECK_STREAM_RETURN(cudaStream, m_logger);

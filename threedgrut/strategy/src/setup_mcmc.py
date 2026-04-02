@@ -14,19 +14,16 @@
 # limitations under the License.
 
 import os
-
 import torch
-
 from threedgrut.utils import jit
-
 
 def setup_mcmc():
     """Setup MCMC CUDA extensions.
-
+    
     Args:
         conf: Configuration object containing MCMC-specific settings
     """
-
+    
     # Get build directory
     build_dir = torch.utils.cpp_extension._get_build_directory("lib_mcmc_cc", verbose=True)
 
@@ -37,8 +34,7 @@ def setup_mcmc():
     include_paths.append(build_dir)
 
     cuda_cflags = [
-        "-use_fast_math",
-        "-O3",
+        "-use_fast_math", "-O3",
     ]
 
     # Source files
@@ -49,7 +45,7 @@ def setup_mcmc():
 
     # Compile and load
     source_paths = [os.path.join(os.path.dirname(__file__), fn) for fn in source_files]
-    return jit.load(
+    jit.load(
         name="lib_mcmc_cc",
         sources=source_paths,
         extra_cflags=[],

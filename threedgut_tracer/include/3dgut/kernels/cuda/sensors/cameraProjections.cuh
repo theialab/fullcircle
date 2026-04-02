@@ -120,11 +120,8 @@ static inline __device__ bool projectPoint(const OpenCVFisheyeProjectionParamete
                                            const tcnn::vec3& position,
                                            float tolerance,
                                            tcnn::vec2& projected) {
-    float rho = stableNorm2(position);
-    if (rho <= 0.f) {
-        rho = __FLT_EPSILON__;
-    }
-
+    constexpr float eps   = __FLT_EPSILON__;
+    const float rho       = fmaxf(tcnn::length(position.xy()), eps);
     const float thetaFull = atan2f(rho, position.z);
     // Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
     // In particular for omnidirectional cameras, this prevents points outside the FOV to be

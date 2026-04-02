@@ -78,7 +78,7 @@ def setup_3dgrt(conf):
 
     # Compile and load.
     source_paths = [os.path.join(os.path.dirname(__file__), fn) for fn in source_files]
-    return jit.load(
+    jit.load(
         name="lib3dgrt_cc",
         sources=source_paths,
         extra_cflags=cflags,

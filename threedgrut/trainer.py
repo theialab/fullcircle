@@ -18,8 +18,11 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional, Union
+import torchvision
 
 import numpy as np
+import cv2
+
 import torch
 import torch.nn as nn
 import torch.utils.data
@@ -31,8 +34,10 @@ from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 import threedgrut.datasets as datasets
 from threedgrut.datasets.protocols import BoundedMultiViewDataset
-from threedgrut.datasets.utils import DEFAULT_DEVICE, MultiEpochsDataLoader, PointCloud
-from threedgrut.export import NuRecExporter, PLYExporter, USDExporter
+from threedgrut.datasets.utils import MultiEpochsDataLoader, DEFAULT_DEVICE
+from threedgrut.export.ingp_exporter import INGPExporter
+from threedgrut.export.ply_exporter import PLYExporter
+from threedgrut.export.usdz_exporter import USDZExporter
 from threedgrut.model.losses import ssim
 from threedgrut.model.model import MixtureOfGaussians
 from threedgrut.optimizers import SelectiveAdam
@@ -42,7 +47,9 @@ from threedgrut.utils.logger import logger
 from threedgrut.utils.misc import check_step_condition, create_summary_writer, jet_map
 from threedgrut.utils.render import apply_post_processing
 from threedgrut.utils.timer import CudaTimer
-
+from threedgrut.utils.misc import jet_map, create_summary_writer, check_step_condition
+from threedgrut.optimizers import SelectiveAdam
+from PIL import Image
 
 class Trainer3DGRUT:
     """Trainer for paper: "3D Gaussian Ray Tracing: Fast Tracing of Particle Scenes" """
@@ -134,34 +141,45 @@ class Trainer3DGRUT:
         self.init_experiments_tracking(conf)
         self.init_post_processing(conf)
         self.init_gui(conf, self.model, self.train_dataset, self.val_dataset, self.scene_bbox)
+        self.use_border_mask = conf.use_border_mask
+        self.border_mask_path = conf.border_mask_train
+        self._border_mask_cache: dict[tuple, torch.Tensor] = {}
+
+    def create_border_mask(self, image_shape, device) -> torch.Tensor:
+        ## Border mask for fisheye training images, resized to the current resolution.
+        batch, height, width, _ = image_shape
+        key = (height, width, device if isinstance(device, str) else str(device))
+        if key not in self._border_mask_cache:
+            mask_np = cv2.imread(self.border_mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask_np.shape != (height, width):
+                mask_np = cv2.resize(mask_np, (width, height), interpolation=cv2.INTER_NEAREST)
+            mask = torch.from_numpy(mask_np.astype(bool)).float()
+            self._border_mask_cache[key] = mask.unsqueeze(0).unsqueeze(-1).to(device)
+        return self._border_mask_cache[key].expand(batch, -1, -1, -1)
 
     def init_dataloaders(self, conf: DictConfig):
         from threedgrut.datasets.utils import configure_dataloader_for_platform
-
+        
         train_dataset, val_dataset = datasets.make(name=conf.dataset.type, config=conf, ray_jitter=None)
-        train_dataloader_kwargs = configure_dataloader_for_platform(
-            {
-                "num_workers": conf.num_workers,
-                "batch_size": 1,
-                "shuffle": True,
-                "pin_memory": True,
-                "persistent_workers": True if conf.num_workers > 0 else False,
-            }
-        )
-
-        val_dataloader_kwargs = configure_dataloader_for_platform(
-            {
-                "num_workers": conf.num_workers,
-                "batch_size": 1,
-                "shuffle": False,
-                "pin_memory": True,
-                "persistent_workers": True if conf.num_workers > 0 else False,
-            }
-        )
-
+        train_dataloader_kwargs = configure_dataloader_for_platform({
+            'num_workers': conf.num_workers,
+            'batch_size': 1,
+            'shuffle': True,
+            'pin_memory': True,
+            'persistent_workers': True if conf.num_workers > 0 else False,
+        })
+        
+        val_dataloader_kwargs = configure_dataloader_for_platform({
+            'num_workers': conf.num_workers,
+            'batch_size': 1,
+            'shuffle': False,
+            'pin_memory': True,
+            'persistent_workers': True if conf.num_workers > 0 else False,
+        })
+        
         train_dataloader = MultiEpochsDataLoader(train_dataset, **train_dataloader_kwargs)
         val_dataloader = torch.utils.data.DataLoader(val_dataset, **val_dataloader_kwargs)
-
+        
         self.train_dataset = train_dataset
         self.train_dataloader = train_dataloader
         self.val_dataset = val_dataset
@@ -194,11 +212,14 @@ class Trainer3DGRUT:
         match self.conf.strategy.method:
             case "GSStrategy":
                 from threedgrut.strategy.gs import GSStrategy
-
                 self.strategy = GSStrategy(conf, self.model)
                 logger.info("🔆 Using GS strategy")
             case "MCMCStrategy":
                 from threedgrut.strategy.mcmc import MCMCStrategy
+                self.strategy = MCMCStrategy(conf, self.model)
+                logger.info("🔆 Using MCMC strategy")
+            case _:
+                raise ValueError(f"unrecognized model.strategy {conf.strategy.method}")
 
                 self.strategy = MCMCStrategy(conf, self.model)
                 logger.info("🔆 Using MCMC strategy")
@@ -447,6 +468,11 @@ class Trainer3DGRUT:
         rgb_gt = gpu_batch.rgb_gt
         rgb_pred = outputs["pred_rgb"]
 
+        if self.use_border_mask:
+            border_mask = self.create_border_mask(rgb_gt.shape, self.device)
+            rgb_gt = rgb_gt * border_mask
+            rgb_pred = rgb_pred * border_mask
+
         psnr = self.criterions["psnr"]
         ssim = self.criterions["ssim"]
         lpips = self.criterions["lpips"]
@@ -478,8 +504,8 @@ class Trainer3DGRUT:
 
             if iteration in self.conf.writer.log_image_views:
                 metrics["img_hit_counts"] = jet_map(outputs["hits_count"][-1], self.conf.writer.max_num_hits)
-                metrics["img_gt"] = gpu_batch.rgb_gt[-1].clip(0, 1.0)
-                metrics["img_pred"] = outputs["pred_rgb"][-1].clip(0, 1.0)
+                metrics["img_gt"] = rgb_gt[-1].clip(0, 1.0)
+                metrics["img_pred"] = rgb_pred[-1].clip(0, 1.0)
                 metrics["img_pred_dist"] = jet_map(outputs["pred_dist"][-1], 100)
                 metrics["img_pred_opacity"] = jet_map(outputs["pred_opacity"][-1], 1)
 
@@ -506,12 +532,56 @@ class Trainer3DGRUT:
         """
         rgb_gt = gpu_batch.rgb_gt
         rgb_pred = outputs["pred_rgb"]
-        mask = gpu_batch.mask
+        capturer_mask    = (1 - gpu_batch.mask).bool()
+        dilated_mask = (1 - gpu_batch.dilated_mask).bool()
 
-        # Mask out the invalid pixels if the mask is provided
-        if mask is not None:
-            rgb_gt = rgb_gt * mask
-            rgb_pred = rgb_pred * mask
+        if gpu_batch.mask is not None:
+            def rgb_to_xyz_srgb_d65(x):
+                M = torch.tensor([[0.4124564, 0.3575761, 0.1804375],
+                                  [0.2126729, 0.7151522, 0.0721750],
+                                  [0.0193339, 0.1191920, 0.9503041]],
+                                device=x.device, dtype=x.dtype)
+                return torch.tensordot(x, M.t(), dims=1)
+
+            def xyz_to_lab(XYZ):
+                Xn, Yn, Zn = 0.95047, 1.0, 1.08883
+                x = XYZ[...,0]/Xn; y = XYZ[...,1]/Yn; z = XYZ[...,2]/Zn
+                eps, k = 216/24389, 24389/27
+                def f(t): 
+                    return torch.where(t > eps, t.pow(1/3), (k*t + 16)/116)
+                fx, fy, fz = f(x), f(y), f(z)
+                L = 116*fy - 16
+                return L
+
+            pred_L = xyz_to_lab(rgb_to_xyz_srgb_d65(rgb_pred.clamp(0,1)))
+            gt_L = xyz_to_lab(rgb_to_xyz_srgb_d65(rgb_gt.clamp(0,1)))
+            luma_mask = pred_L[...,None] < gt_L[...,None]
+            
+            local_luma_mask = luma_mask | dilated_mask
+            pixel_mask      = capturer_mask & local_luma_mask
+            rgb_gt = rgb_gt * pixel_mask
+            rgb_pred = rgb_pred * pixel_mask
+
+            if self.global_step % 5000 == 0:
+                debug_dir = os.path.join(self.tracking.output_dir, "debug", f"step_{self.global_step:06d}")
+                os.makedirs(debug_dir, exist_ok=True)
+
+                def save_mask(t, name):
+                    arr = (t.detach().to(torch.uint8) * 255).cpu().numpy().squeeze()
+                    Image.fromarray(arr, mode="L").save(os.path.join(debug_dir, name))
+
+                save_mask(luma_mask,       "luma.png")
+                save_mask(dilated_mask,    "dilated.png")
+                save_mask(capturer_mask,   "capturer.png")
+                save_mask(local_luma_mask, "local_luma.png")
+                save_mask(pixel_mask,      "pixel.png")
+                torchvision.utils.save_image(rgb_gt[0].permute(2, 0, 1),   os.path.join(debug_dir, "rgb_gt.png"))
+                torchvision.utils.save_image(rgb_pred[0].permute(2, 0, 1), os.path.join(debug_dir, "rgb_pred.png"))
+
+        if self.use_border_mask:
+            border_mask = self.create_border_mask(rgb_gt.shape, self.device)
+            rgb_gt = rgb_gt * border_mask
+            rgb_pred = rgb_pred * border_mask
 
         # L1 loss
         loss_l1 = torch.zeros(1, device=self.device)
@@ -556,15 +626,8 @@ class Trainer3DGRUT:
                 lambda_scale = self.conf.loss.lambda_scale
 
         # Total loss
-        loss = lambda_l1 * loss_l1 + lambda_ssim * loss_ssim + lambda_opacity * loss_opacity + lambda_scale * loss_scale
-        return dict(
-            total_loss=loss,
-            l1_loss=lambda_l1 * loss_l1,
-            l2_loss=lambda_l2 * loss_l2,
-            ssim_loss=lambda_ssim * loss_ssim,
-            opacity_loss=lambda_opacity * loss_opacity,
-            scale_loss=lambda_scale * loss_scale,
-        )
+        loss = lambda_l1*loss_l1 + lambda_ssim * loss_ssim + lambda_opacity * loss_opacity + lambda_scale * loss_scale
+        return dict(total_loss=loss, l1_loss=lambda_l1 * loss_l1, l2_loss=lambda_l2 * loss_l2, ssim_loss=lambda_ssim * loss_ssim, opacity_loss=lambda_opacity * loss_opacity, scale_loss=lambda_scale * loss_scale)
 
     @torch.cuda.nvtx.range("log_validation_iter")
     def log_validation_iter(
@@ -703,13 +766,6 @@ class Trainer3DGRUT:
             if self.conf.loss.use_scale:
                 scale_loss = np.mean(batch_metrics["losses"]["scale_loss"])
                 writer.add_scalar("loss/scale/train", scale_loss, global_step)
-            if self.post_processing is not None and "post_processing_reg_loss" in batch_metrics["losses"]:
-                post_processing_reg_loss = np.mean(batch_metrics["losses"]["post_processing_reg_loss"])
-                writer.add_scalar(
-                    "loss/post_processing_reg/train",
-                    post_processing_reg_loss,
-                    global_step,
-                )
             if "psnr" in batch_metrics:
                 writer.add_scalar("psnr/train", batch_metrics["psnr"], self.global_step)
             if "ssim" in batch_metrics:
@@ -736,10 +792,6 @@ class Trainer3DGRUT:
             writer.add_scalar("num_particles/train", self.model.num_gaussians, self.global_step)
             writer.add_scalar("train/num_GS", self.model.num_gaussians, self.global_step)
 
-            # # NOTE: hack to easily compare with 3DGS
-            # writer.add_scalar("train_loss_patches/total_loss", loss, global_step)
-            # writer.add_scalar("gaussians/count", self.model.num_gaussians, self.global_step)
-
         logger.log_progress(
             task_name="Training",
             advance=1,
@@ -763,61 +815,18 @@ class Trainer3DGRUT:
 
         # Export the mixture-of-3d-gaussians
         logger.log_rule("Exporting Models")
+        if conf.export_ingp.enabled:
+            ingp_path = conf.export_ingp.path if conf.export_ingp.path else os.path.join(out_dir, "export_last.ingp")
+            exporter = INGPExporter()
+            exporter.export(self.model, Path(ingp_path), dataset=self.train_dataset, conf=conf, force_half=conf.export_ingp.force_half)
         if conf.export_ply.enabled:
             ply_path = conf.export_ply.path if conf.export_ply.path else os.path.join(out_dir, "export_last.ply")
             exporter = PLYExporter()
             exporter.export(self.model, Path(ply_path), dataset=self.train_dataset, conf=conf)
-        if conf.export_usd.enabled:
-            # Determine format for filename suffix
-            usdz_format = getattr(conf.export_usd, "format", "nurec")
-            if usdz_format == "standard":
-                format_suffix = "lightfield"
-                exporter = USDExporter.from_config(conf)
-            else:
-                format_suffix = "nurec"
-                exporter = NuRecExporter()
-
-            # Handle path: if not set or relative, put in output directory
-            if conf.export_usd.path:
-                usdz_path = conf.export_usd.path
-                if not os.path.isabs(usdz_path):
-                    usdz_path = os.path.join(out_dir, usdz_path)
-            else:
-                # Default filename includes format suffix
-                usdz_path = os.path.join(out_dir, f"export_last_{format_suffix}.usdz")
-
-            exporter.export(
-                self.model,
-                Path(usdz_path),
-                dataset=self.train_dataset,
-                conf=conf,
-                background=getattr(self, "background", None),
-            )
-
-        # Export post-processing report (PPISP-based)
-        if self.post_processing is not None and conf.post_processing.method == "ppisp":
-            from ppisp.report import export_ppisp_report
-
-            logger.info("📊 Exporting PPISP report...")
-
-            ppisp_report_dir = Path(out_dir) / "ppisp_report"
-            frames_per_camera = self.train_dataset.get_frames_per_camera()
-
-            # Get camera names if available
-            camera_names = None
-            if hasattr(self.train_dataset, "get_camera_names"):
-                camera_names = self.train_dataset.get_camera_names()
-
-            export_ppisp_report(
-                self.post_processing,
-                frames_per_camera=frames_per_camera,
-                output_dir=ppisp_report_dir,
-                camera_names=camera_names,
-            )
-            logger.info(f"📊 PPISP report saved to: {ppisp_report_dir}")
-
-        self.teardown_dataloaders()
-        self.save_checkpoint(last_checkpoint=True)
+        if conf.export_usdz.enabled:
+            usdz_path = conf.export_usdz.path if conf.export_usdz.path else os.path.join(out_dir, "export_last.usdz")
+            exporter = USDZExporter()
+            exporter.export(self.model, Path(usdz_path), dataset=self.train_dataset, conf=conf)
 
         # Evaluate on test set
         if conf.test_last:
@@ -1050,6 +1059,415 @@ class Trainer3DGRUT:
             elif self.conf.with_gui:
                 self.render_gui(scene_updated)
 
+    def save_training_images(self, gpu_batch: dict[str, torch.Tensor], outputs: dict[str, torch.Tensor], global_step: int):
+        """Save GT and rendered images during training at specified intervals."""
+        import os
+        from PIL import Image
+        import torch
+        import numpy as np
+        
+        # Create directories for saving images
+        out_dir = self.tracking.output_dir
+        gt_dir = os.path.join(out_dir, "training_images", "gt")
+        render_dir = os.path.join(out_dir, "training_images", "renders")
+        os.makedirs(gt_dir, exist_ok=True)
+        os.makedirs(render_dir, exist_ok=True)
+        
+        # Get GT and predicted images
+        rgb_gt = gpu_batch.rgb_gt[0].detach().cpu()  # Take first image from batch
+        rgb_pred = outputs["pred_rgb"][0].detach().cpu()  # Take first image from batch
+        
+        # Clip values to [0, 1] range
+        rgb_gt = torch.clamp(rgb_gt, 0, 1)
+        rgb_pred = torch.clamp(rgb_pred, 0, 1)
+        
+        # Convert to numpy and scale to [0, 255]
+        gt_np = (rgb_gt.numpy() * 255).astype(np.uint8)
+        pred_np = (rgb_pred.numpy() * 255).astype(np.uint8)
+        
+        # Save images
+        gt_path = os.path.join(gt_dir, f"gt_step_{global_step:06d}.png")
+        render_path = os.path.join(render_dir, f"render_step_{global_step:06d}.png")
+        
+        Image.fromarray(gt_np).save(gt_path)
+        Image.fromarray(pred_np).save(render_path)
+        
+        # Helper function to safely convert tensor to image array
+        def tensor_to_image_array(tensor, normalize_range=None):
+            """Convert tensor to numpy array suitable for PIL Image."""
+            # Move to CPU and detach
+            tensor = tensor.detach().cpu()
+            
+            # Handle different tensor shapes
+            if tensor.dim() == 4:  # (1, H, W, C) or (1, C, H, W)
+                tensor = tensor.squeeze(0)  # Remove batch dimension
+            elif tensor.dim() == 3 and tensor.shape[0] == 1:  # (1, H, W)
+                tensor = tensor.squeeze(0)  # Remove first dimension if it's 1
+            
+            # Normalize if specified
+            if normalize_range is not None:
+                min_val, max_val = normalize_range
+                tensor = torch.clamp(tensor / max_val, 0, 1)
+            else:
+                tensor = torch.clamp(tensor, 0, 1)
+            
+            # Convert to numpy
+            np_array = tensor.numpy()
+            
+            # Handle grayscale to RGB conversion
+            if np_array.ndim == 2:  # Grayscale (H, W)
+                np_array = np.stack([np_array, np_array, np_array], axis=-1)
+            elif np_array.ndim == 3 and np_array.shape[-1] == 1:  # (H, W, 1)
+                np_array = np.repeat(np_array, 3, axis=-1)
+            
+            # Scale to [0, 255] and convert to uint8
+            return (np_array * 255).astype(np.uint8)
+        
+        # Optional: Save additional outputs if available
+        # if "pred_dist" in outputs:
+        #     try:
+        #         dist_dir = os.path.join(out_dir, "training_images", "distance")
+        #         os.makedirs(dist_dir, exist_ok=True)
+                
+        #         pred_dist = outputs["pred_dist"][0]
+        #         dist_np = tensor_to_image_array(pred_dist, normalize_range=(0, 100))
+                
+        #         dist_path = os.path.join(dist_dir, f"distance_step_{global_step:06d}.png")
+        #         Image.fromarray(dist_np).save(dist_path)
+        #     except Exception as e:
+        #         logger.warning(f"Failed to save distance image: {e}")
+        
+        # if "pred_opacity" in outputs:
+        #     try:
+        #         opacity_dir = os.path.join(out_dir, "training_images", "opacity")
+        #         os.makedirs(opacity_dir, exist_ok=True)
+                
+        #         pred_opacity = outputs["pred_opacity"][0]
+        #         opacity_np = tensor_to_image_array(pred_opacity)
+                
+        #         opacity_path = os.path.join(opacity_dir, f"opacity_step_{global_step:06d}.png")
+        #         Image.fromarray(opacity_np).save(opacity_path)
+        #     except Exception as e:
+        #         logger.warning(f"Failed to save opacity image: {e}")
+        
+        # Save hit counts visualization if available
+        # if "hits_count" in outputs:
+        #     try:
+        #         hits_dir = os.path.join(out_dir, "training_images", "hits")
+        #         os.makedirs(hits_dir, exist_ok=True)
+                
+        #         hits_count = outputs["hits_count"][0]
+        #         hits_np = tensor_to_image_array(hits_count, normalize_range=(0, 50))  # Adjust max hits as needed
+                
+        #         hits_path = os.path.join(hits_dir, f"hits_step_{global_step:06d}.png")
+        #         Image.fromarray(hits_np).save(hits_path)
+        #     except Exception as e:
+        #         logger.warning(f"Failed to save hits image: {e}")
+
+        # Compute and save error map
+        try:
+            error_dir = os.path.join(out_dir, "training_images", "error_maps")
+            os.makedirs(error_dir, exist_ok=True)
+            
+            # Ensure both images have the same shape
+            gt_for_error = rgb_gt.numpy()
+            pred_for_error = rgb_pred.numpy()
+            
+            # Compute error map (L1 distance)
+            error_map = np.abs(gt_for_error - pred_for_error)
+                    
+            error_rgb = (error_map * 255).astype(np.uint8)
+                    
+            error_path = os.path.join(error_dir, f"error_step_{global_step:06d}.png")
+            Image.fromarray(error_rgb).save(error_path)
+            
+        except Exception as e:
+            logger.warning(f"Failed to save error map: {e}")
+        
+        logger.info(f"💾 Saved training images at step {global_step} to {out_dir}/training_images/")
+
+    # Add these methods to your Trainer3DGRUT class:
+
+    def save_gradient_analysis(self, gpu_batch: dict[str, torch.Tensor], outputs: dict[str, torch.Tensor], global_step: int):
+        """Save gradient norm analysis to understand why large Gaussians aren't being split."""
+        import matplotlib.pyplot as plt
+        import matplotlib.cm as cm
+        
+        try:
+            out_dir = self.tracking.output_dir
+            grad_dir = os.path.join(out_dir, "gradient_analysis")
+            os.makedirs(grad_dir, exist_ok=True)
+            
+            # Get the strategy to access gradient information
+            strategy = self.strategy
+            
+            # Check if we're using GS strategy which has gradient accumulation
+            if not hasattr(strategy, 'densify_grad_norm_accum') or strategy.densify_grad_norm_accum is None:
+                logger.warning("Gradient norm not available for current strategy")
+                return
+            
+            # Log sizes for debugging
+            logger.info(f"Gradient accumulator size: {strategy.densify_grad_norm_accum.shape}")
+            logger.info(f"Model num gaussians: {self.model.num_gaussians}")
+            
+            # Calculate accumulated gradient norms (same as in densify_gaussians method)
+            with torch.no_grad():
+                grad_norms = strategy.densify_grad_norm_accum / strategy.densify_grad_norm_denom
+                grad_norms[grad_norms.isnan()] = 0.0
+                grad_norms = grad_norms.squeeze()
+            
+            # Clone to CPU for visualization
+            grad_norms_cpu = grad_norms.clone().detach().cpu()
+            
+            # Get the split threshold
+            split_threshold = strategy.split_grad_threshold
+            clone_threshold = strategy.clone_grad_threshold
+
+            if 'mog_visibility' in outputs:
+                visibility = outputs['mog_visibility'].detach().cpu()
+                
+                # IMPORTANT: Squeeze visibility IMMEDIATELY to ensure it's 1D
+                while visibility.dim() > 1 and 1 in visibility.shape:
+                    visibility = visibility.squeeze()
+                
+                # If still not 1D, flatten it
+                if visibility.dim() > 1:
+                    visibility = visibility.flatten()
+                
+                logger.info(f"Visibility shape after processing: {visibility.shape}, grad_norms shape: {grad_norms_cpu.shape}")
+                
+                # Handle size mismatch
+                if len(visibility) != len(grad_norms_cpu):
+                    logger.warning(f"Visibility size {len(visibility)} doesn't match grad_norms size {len(grad_norms_cpu)}")
+                    # Use the minimum size
+                    min_size = min(len(visibility), len(grad_norms_cpu))
+                    visibility = visibility[:min_size]
+                    grad_norms_cpu = grad_norms_cpu[:min_size]
+                
+                visibility = visibility.bool()
+            else:
+                visibility = torch.ones(len(grad_norms_cpu), dtype=torch.bool)
+            
+            # Create comprehensive visualizations
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            fig.suptitle(f'Gradient Norm Analysis - Step {global_step}', fontsize=16)
+            
+            # 1. Histogram of gradient norms
+            ax = axes[0, 0]
+            visible_grads = grad_norms_cpu[visibility]
+            if len(visible_grads) > 0:
+                # Filter out zeros for better visualization
+                non_zero_grads = visible_grads[visible_grads > 0]
+                if len(non_zero_grads) > 0:
+                    ax.hist(non_zero_grads.numpy(), bins=100, alpha=0.7, color='blue', edgecolor='black')
+                    ax.axvline(split_threshold, color='red', linestyle='--', linewidth=2, label=f'Split Threshold: {split_threshold}')
+                    ax.axvline(clone_threshold, color='orange', linestyle='--', linewidth=2, label=f'Clone Threshold: {clone_threshold}')
+                    ax.set_xlabel('Gradient Norm')
+                    ax.set_ylabel('Count')
+                    ax.set_title('Distribution of Gradient Norms (Visible Gaussians, non-zero)')
+                    ax.legend()
+                    ax.set_yscale('log')
+                    ax.set_xscale('log')
+            
+            # 2. Gradient norms vs Gaussian scale
+            ax = axes[0, 1]
+            try:
+                scales = self.model.get_scale().detach().cpu()
+                # Ensure scales match our gradient norms size
+                scales = scales[:len(grad_norms_cpu)]
+                max_scale = scales.max(dim=1)[0]  # Max scale across dimensions
+                
+                non_zero_mask = (grad_norms_cpu > 0) & visibility
+                
+                if non_zero_mask.any():
+                    scatter = ax.scatter(max_scale[non_zero_mask], grad_norms_cpu[non_zero_mask], 
+                                    alpha=0.5, c=grad_norms_cpu[non_zero_mask], cmap='viridis', s=1)
+                    ax.axhline(split_threshold, color='red', linestyle='--', linewidth=2, label=f'Split Threshold: {split_threshold}')
+                    ax.axhline(clone_threshold, color='orange', linestyle='--', linewidth=2, label=f'Clone Threshold: {clone_threshold}')
+                    
+                    # Add scene extent threshold line for scale
+                    scene_extent = self.scene_extent
+                    size_threshold = strategy.relative_size_threshold * scene_extent
+                    ax.axvline(size_threshold, color='green', linestyle='--', linewidth=2, label=f'Size Threshold: {size_threshold:.4f}')
+                    
+                    ax.set_xlabel('Max Gaussian Scale')
+                    ax.set_ylabel('Gradient Norm')
+                    ax.set_title('Gradient Norm vs Gaussian Scale')
+                    ax.set_xscale('log')
+                    ax.set_yscale('log')
+                    ax.legend()
+                    plt.colorbar(scatter, ax=ax, label='Gradient Norm')
+            except Exception as e:
+                logger.warning(f"Failed to create scale plot: {e}")
+                ax.text(0.5, 0.5, f'Error: {str(e)}', transform=ax.transAxes, ha='center')
+            
+            # 3. Gradient norms vs opacity
+            ax = axes[0, 2]
+            try:
+                opacities = self.model.get_density().detach().cpu().squeeze()
+                # Ensure opacities match our gradient norms size
+                opacities = opacities[:len(grad_norms_cpu)]
+                
+                non_zero_mask = (grad_norms_cpu > 0) & visibility
+                
+                if non_zero_mask.any():
+                    scatter = ax.scatter(opacities[non_zero_mask], grad_norms_cpu[non_zero_mask], 
+                                    alpha=0.5, c=grad_norms_cpu[non_zero_mask], cmap='viridis', s=1)
+                    ax.axhline(split_threshold, color='red', linestyle='--', linewidth=2, label=f'Split Threshold: {split_threshold}')
+                    ax.axhline(clone_threshold, color='orange', linestyle='--', linewidth=2, label=f'Clone Threshold: {clone_threshold}')
+                    ax.axvline(strategy.prune_density_threshold, color='purple', linestyle='--', linewidth=2, label=f'Prune Threshold: {strategy.prune_density_threshold}')
+                    ax.set_xlabel('Gaussian Opacity')
+                    ax.set_ylabel('Gradient Norm')
+                    ax.set_title('Gradient Norm vs Opacity')
+                    ax.set_yscale('log')
+                    ax.legend()
+                    plt.colorbar(scatter, ax=ax, label='Gradient Norm')
+            except Exception as e:
+                logger.warning(f"Failed to create opacity plot: {e}")
+                ax.text(0.5, 0.5, f'Error: {str(e)}', transform=ax.transAxes, ha='center')
+            
+            # 4. Why large Gaussians aren't splitting - detailed analysis
+            ax = axes[1, 0]
+            try:
+                scene_extent = self.scene_extent
+                size_threshold = strategy.relative_size_threshold * scene_extent
+                
+                # Identify different categories of Gaussians
+                large_mask = max_scale > size_threshold
+                high_grad_mask = grad_norms_cpu >= split_threshold
+                
+                # Categories
+                categories = []
+                labels = []
+                colors = []
+                
+                if (large_mask & high_grad_mask & visibility).any():
+                    mask = large_mask & high_grad_mask & visibility
+                    categories.append((max_scale[mask], grad_norms_cpu[mask]))
+                    labels.append('Large + High Grad (WILL SPLIT)')
+                    colors.append('red')
+                
+                if (large_mask & ~high_grad_mask & visibility).any():
+                    mask = large_mask & ~high_grad_mask & visibility
+                    categories.append((max_scale[mask], grad_norms_cpu[mask]))
+                    labels.append('Large + Low Grad (NO SPLIT)')
+                    colors.append('blue')
+                
+                if (~large_mask & (grad_norms_cpu >= clone_threshold) & visibility).any():
+                    mask = ~large_mask & (grad_norms_cpu >= clone_threshold) & visibility
+                    categories.append((max_scale[mask], grad_norms_cpu[mask]))
+                    labels.append('Small + High Grad (WILL CLONE)')
+                    colors.append('green')
+                
+                for i, (scales_cat, grads_cat) in enumerate(categories):
+                    ax.scatter(scales_cat, grads_cat, c=colors[i], label=labels[i], alpha=0.6, s=20)
+                
+                ax.axhline(split_threshold, color='red', linestyle='--', linewidth=2, label=f'Split Threshold')
+                ax.axhline(clone_threshold, color='orange', linestyle='--', linewidth=2, label=f'Clone Threshold')
+                ax.axvline(size_threshold, color='green', linestyle='--', linewidth=2, label=f'Size Threshold')
+                
+                ax.set_xlabel('Gaussian Scale')
+                ax.set_ylabel('Gradient Norm')
+                ax.set_title('Densification Decision Map')
+                ax.set_xscale('log')
+                ax.set_yscale('log')
+                ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                ax.grid(True, alpha=0.3)
+            except Exception as e:
+                logger.warning(f"Failed to create decision map: {e}")
+                ax.text(0.5, 0.5, f'Error: {str(e)}', transform=ax.transAxes, ha='center')
+            
+            # 5. Accumulation statistics
+            ax = axes[1, 1]
+            try:
+                denom_values = strategy.densify_grad_norm_denom.squeeze().cpu()
+                denom_values = denom_values[:len(grad_norms_cpu)]  # Match size
+                
+                if len(denom_values) > 0:
+                    ax.hist(denom_values.numpy(), bins=50, alpha=0.7, color='purple', edgecolor='black')
+                    ax.set_xlabel('Accumulation Count')
+                    ax.set_ylabel('Number of Gaussians')
+                    ax.set_title('Gradient Accumulation Counts\n(How many views contributed to each Gaussian)')
+                    ax.set_yscale('log')
+                    
+                    # Add statistics
+                    mean_accum = denom_values.mean().item()
+                    max_accum = denom_values.max().item()
+                    ax.text(0.7, 0.9, f'Mean: {mean_accum:.1f}\nMax: {max_accum}', 
+                            transform=ax.transAxes, verticalalignment='top',
+                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+            except Exception as e:
+                logger.warning(f"Failed to create accumulation plot: {e}")
+                ax.text(0.5, 0.5, f'Error: {str(e)}', transform=ax.transAxes, ha='center')
+            
+            # 6. Detailed statistics
+            ax = axes[1, 2]
+            ax.axis('off')
+            
+            stats_text = f"Gradient Norm Analysis (Step {global_step})\n"
+            stats_text += "=" * 40 + "\n\n"
+            
+            try:
+                if len(visible_grads) > 0:
+                    stats_text += f"Total Gaussians: {self.model.num_gaussians:,}\n"
+                    stats_text += f"Gradient buffer size: {len(grad_norms_cpu):,}\n"
+                    stats_text += f"Visible Gaussians: {visibility.sum().item():,}\n"
+                    stats_text += f"With Non-Zero Gradient: {(grad_norms_cpu > 0).sum().item():,}\n\n"
+                    
+                    stats_text += f"Thresholds:\n"
+                    stats_text += f"  Split: {split_threshold}\n"
+                    stats_text += f"  Clone: {clone_threshold}\n"
+                    stats_text += f"  Size: {size_threshold:.4f}\n"
+                    stats_text += f"  Prune Opacity: {strategy.prune_density_threshold}\n\n"
+                    
+                    non_zero_grads = visible_grads[visible_grads > 0]
+                    if len(non_zero_grads) > 0:
+                        stats_text += "Gradient Norm Statistics (non-zero):\n"
+                        stats_text += f"  Mean: {non_zero_grads.mean():.6f}\n"
+                        stats_text += f"  Std: {non_zero_grads.std():.6f}\n"
+                        stats_text += f"  Min: {non_zero_grads.min():.6f}\n"
+                        stats_text += f"  Max: {non_zero_grads.max():.6f}\n"
+                        stats_text += f"  Median: {non_zero_grads.median():.6f}\n\n"
+                    
+                    # Densification action predictions
+                    if 'max_scale' in locals():
+                        will_split = (large_mask & high_grad_mask).sum().item()
+                        will_clone = (~large_mask & (grad_norms_cpu >= clone_threshold)).sum().item()
+                        
+                        stats_text += f"Predicted Actions:\n"
+                        stats_text += f"  Will Split: {will_split:,}\n"
+                        stats_text += f"  Will Clone: {will_clone:,}\n\n"
+                        
+                        # Large Gaussian analysis
+                        n_large = large_mask.sum().item()
+                        if n_large > 0:
+                            large_grads = grad_norms_cpu[large_mask]
+                            large_high_grad = (large_grads >= split_threshold).sum().item()
+                            
+                            stats_text += f"Large Gaussians (scale>{size_threshold:.4f}):\n"
+                            stats_text += f"  Count: {n_large:,}\n"
+                            stats_text += f"  With high gradient: {large_high_grad:,} ({100*large_high_grad/n_large:.1f}%)\n"
+                            if (large_grads > 0).any():
+                                stats_text += f"  Mean gradient: {large_grads[large_grads > 0].mean():.6f}\n"
+            except Exception as e:
+                stats_text += f"\nError computing statistics: {str(e)}\n"
+            
+            ax.text(0.05, 0.95, stats_text, transform=ax.transAxes, 
+                    fontsize=9, verticalalignment='top', fontfamily='monospace')
+            
+            plt.tight_layout()
+            save_path = os.path.join(grad_dir, f'gradient_analysis_step_{global_step:06d}.png')
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"💾 Saved gradient norm analysis to {save_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save gradient analysis: {e}")
+            import traceback
+            traceback.print_exc()
+
+
     @torch.cuda.nvtx.range(f"run_train_pass")
     def run_train_pass(self, conf: DictConfig):
         """Runs a single train epoch over the dataset."""
@@ -1065,8 +1483,102 @@ class Trainer3DGRUT:
             if self.global_step >= conf.n_iterations:
                 return
 
-            # Step for training iteration
-            self.run_train_iter(self.global_step, batch, profilers, metrics, conf)
+            # Access the GPU-cache batch data
+            gpu_batch = self.train_dataset.get_gpu_batch_with_intrinsics(batch)
+
+            # Perform validation if required
+            is_time_to_validate = (global_step > 0 or conf.validate_first) and (global_step % self.val_frequency == 0)
+            if is_time_to_validate:
+                self.run_validation_pass(conf)
+
+            # Compute the outputs of a single batch
+            with torch.cuda.nvtx.range(f"train_{global_step}_fwd"):
+                profilers["inference"].start()
+                outputs = model(gpu_batch, train=True, frame_id=global_step)
+                profilers["inference"].end()
+
+            # Compute the losses of a single batch
+            with torch.cuda.nvtx.range(f"train_{global_step}_loss"):
+                batch_losses = self.get_losses(gpu_batch, outputs)
+
+            # Backward strategy step
+            with torch.cuda.nvtx.range(f"train_{global_step}_pre_bwd"):
+                self.strategy.pre_backward(step=global_step, scene_extent=self.scene_extent, train_dataset=self.train_dataset, batch=gpu_batch, writer=self.tracking.writer)
+
+            # Back-propagate the gradients and update the parameters
+            with torch.cuda.nvtx.range(f"train_{global_step}_bwd"):
+                profilers["backward"].start()
+                batch_losses["total_loss"].backward()
+                profilers["backward"].end()
+
+            # Post backward strategy step
+            with torch.cuda.nvtx.range(f"train_{global_step}_post_bwd"):
+                scene_updated = self.strategy.post_backward(
+                    step=global_step, scene_extent=self.scene_extent, train_dataset=self.train_dataset, batch=gpu_batch, writer=self.tracking.writer
+                )
+
+            # Optimizer step
+            with torch.cuda.nvtx.range(f"train_{global_step}_backprop"):
+                if isinstance(model.optimizer, SelectiveAdam):
+                    assert outputs['mog_visibility'].shape == model.density.shape, f"Visibility shape {outputs['mog_visibility'].shape} does not match density shape {model.density.shape}"
+                    model.optimizer.step(outputs['mog_visibility'])
+                else:
+                    model.optimizer.step()
+                model.optimizer.zero_grad()
+
+            # Scheduler step
+            with torch.cuda.nvtx.range(f"train_{global_step}_scheduler"):
+                model.scheduler_step(global_step)
+
+            # Post backward strategy step
+            with torch.cuda.nvtx.range(f"train_{global_step}_post_opt_step"):
+                scene_updated = self.strategy.post_optimizer_step(
+                    step=global_step, scene_extent=self.scene_extent, train_dataset=self.train_dataset, batch=gpu_batch, writer=self.tracking.writer
+                )
+
+            # Update the SH if required
+            if self.model.progressive_training and check_step_condition(global_step, 0, 1e6, self.model.feature_dim_increase_interval):
+                self.model.increase_num_active_features()
+
+            # Update the BVH if required
+            if scene_updated or (
+                conf.model.bvh_update_frequency > 0 and global_step % conf.model.bvh_update_frequency == 0
+            ):
+                with torch.cuda.nvtx.range(f"train_{global_step}_bvh"):
+                    profilers["build_as"].start()
+                    model.build_acc(rebuild=True)
+                    profilers["build_as"].end()
+
+            # Increment the global step
+            self.global_step += 1
+            global_step = self.global_step
+
+            # Compute metrics
+            batch_metrics = self.get_metrics(
+                gpu_batch, outputs, batch_losses, profilers, split="training", iteration=iter
+            )
+
+            if "forward_render" in model.renderer.timings:
+                batch_metrics["timings"]["forward_render_cuda"] = model.renderer.timings["forward_render"]
+            if "backward_render" in model.renderer.timings:
+                batch_metrics["timings"]["backward_render_cuda"] = model.renderer.timings["backward_render"]
+            metrics.append(batch_metrics)
+
+            # !!! Below global step has been incremented !!!
+            with torch.cuda.nvtx.range(f"train_{global_step-1}_log_iter"):
+                self.log_training_iter(gpu_batch, outputs, batch_metrics, iter)
+
+            with torch.cuda.nvtx.range(f"train_{global_step-1}_save_images"):
+                if global_step % 5000 == 0:
+                    self.save_training_images(gpu_batch, outputs, global_step)
+                    #self.save_gradient_analysis(gpu_batch, outputs, global_step)
+
+            with torch.cuda.nvtx.range(f"train_{global_step-1}_save_ckpt"):
+                if global_step in conf.checkpoint.iterations:
+                    self.save_checkpoint()
+
+            with torch.cuda.nvtx.range(f"train_{global_step-1}_update_gui"):
+                self.render_gui(scene_updated)  # Updating the GUI
 
         self.log_training_pass(metrics)
 

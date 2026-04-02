@@ -39,7 +39,6 @@ class GUI:
             logger.info("polyscope set to host2device mode.")
         else:  # device2device
             from threedgrut.gui.ps_extension import initialize_cugl_interop
-
             initialize_cugl_interop()
             logger.info("polyscope set to device2device mode.")
 

@@ -19,7 +19,7 @@
 # Exit on error
 set -e
 
-CONDA_ENV=${1:-"3dgrut"}
+CONDA_ENV=${1:-"FullCircle"}
 
 # parse an optional second arg WITH_GCC11 to also manually use gcc-11 within the environment
 WITH_GCC11=false
@@ -49,9 +49,9 @@ echo ""
 #
 # Check if CUDA_VERSION is supported
 if [ "$CUDA_VERSION" = "11.8.0" ]; then
-    export TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;9.0+PTX";
+    export TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;9.0";
 elif [ "$CUDA_VERSION" = "12.8.1" ]; then
-    export TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;9.0;10.0;12.0+PTX";
+    export TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;9.0;10.0;12.0";
 else
     echo "Unsupported CUDA version: $CUDA_VERSION, available options are 11.8.0 and 12.8.1"
     exit 1
@@ -93,7 +93,7 @@ eval "$(conda shell.bash hook)"
 CONDA_ENV_PATH=$(conda env list | sed -E -n "s/^${CONDA_ENV}[[:space:]]+\*?[[:space:]]*(.*)$/\1/p")
 if [ -z "${CONDA_ENV_PATH}" ]; then
   echo "Conda environment '${CONDA_ENV}' not found, creating it"
-  conda create --name ${CONDA_ENV} -y python=3.11 setuptools==78.1.1
+  conda create --name ${CONDA_ENV} -y python=3.11
 else
   echo "NOTE: Conda environment '${CONDA_ENV}' already exists at ${CONDA_ENV_PATH}, skipping environment creation"
 fi
@@ -126,7 +126,7 @@ conda activate $CONDA_ENV
 if [ "$CUDA_VERSION" = "11.8.0" ]; then
     echo "Installing CUDA 11.8.0 ..."
     conda install -y cuda-toolkit cmake ninja -c nvidia/label/cuda-11.8.0
-    conda install -y pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=11.8 "numpy<2.0" "mkl<=2022.1.0" -c pytorch -c nvidia/label/cuda-11.8.0
+    conda install -y pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=11.8 "numpy<2.0" -c pytorch -c nvidia/label/cuda-11.8.0
     pip3 install --find-links https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.1.2_cu118.html kaolin==0.17.0
 
 # CUDA 12.8 supports compute capability 10.0 and 12.0
@@ -174,8 +174,22 @@ conda install -c conda-forge --override-channels mesa-libgl-devel-cos7-x86_64 -y
 
 # Initialize git submodules and install Python requirements
 git submodule update --init --recursive
-# Use --no-build-isolation so packages can access torch during build
+
+# setuptools >=72 removed pkg_resources which torch 2.1 cpp_extension still needs
+pip install "setuptools<72.1.0"
+
+# --no-build-isolation lets fused-ssim's setup.py see the conda-installed torch
 pip install --no-build-isolation -r requirements.txt
-pip install --no-build-isolation -e .
+pip install -e .
+
+# ── FullCircle masking pipeline ──────────────────────────────────────────
+pip install -r masking/requirements.txt
+
+# SAM-2: install without deps to avoid upgrading torch (requires >=2.3.1
+# but works fine at runtime with the torch version installed above)
+pip install --no-deps "git+https://github.com/facebookresearch/sam2.git"
+
+# sam-ui tracking tool (used by run_masking.sh step 5)
+pip install -e thirdparty/sam-ui
 
 echo "Setup completed successfully!"

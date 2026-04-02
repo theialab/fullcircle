@@ -25,6 +25,7 @@
 
 import torch
 
+
 _optimizer_plugin = None
 
 
@@ -94,7 +95,9 @@ class SelectiveAdam(torch.optim.Adam):
             eps = group["eps"]
             beta1, beta2 = group["betas"]
 
-            assert len(group["params"]) == 1, "More than one tensor in group is not supported"
+            assert (
+                len(group["params"]) == 1
+            ), "More than one tensor in group is not supported"
 
             param = group["params"][0]
             if param.grad is None:
@@ -104,8 +107,12 @@ class SelectiveAdam(torch.optim.Adam):
             state = self.state[param]
             if len(state) == 0:
                 state["step"] = torch.tensor(0.0, dtype=torch.float32)
-                state["exp_avg"] = torch.zeros_like(param, memory_format=torch.preserve_format)
-                state["exp_avg_sq"] = torch.zeros_like(param, memory_format=torch.preserve_format)
+                state["exp_avg"] = torch.zeros_like(
+                    param, memory_format=torch.preserve_format
+                )
+                state["exp_avg_sq"] = torch.zeros_like(
+                    param, memory_format=torch.preserve_format
+                )
 
             stored_state = self.state.get(param, None)
             exp_avg = stored_state["exp_avg"]

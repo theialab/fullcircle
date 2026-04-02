@@ -24,6 +24,7 @@ from threedgrut.utils import jit
 # ----------------------------------------------------------------------------
 #
 def setup_3dgut(conf):
+
     build_dir = torch.utils.cpp_extension._get_build_directory("lib3dgut_cc", verbose=True)
 
     include_paths = []
@@ -84,8 +85,7 @@ def setup_3dgut(conf):
         "-U__CUDA_NO_HALF_CONVERSIONS__",
         "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
         "-U__CUDA_NO_HALF2_OPERATORS__",
-        "-use_fast_math",
-        "-O3",
+        "-use_fast_math", "-O3",
         *defines,
     ]
 
@@ -134,7 +134,7 @@ def setup_3dgut(conf):
 
     # Compile and load.
     source_paths = [os.path.join(os.path.dirname(__file__), fn) for fn in source_files]
-    return jit.load(
+    jit.load(
         name="lib3dgut_cc",
         sources=source_paths,
         extra_cflags=cflags,

@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="description" content="FullCircle: Effortless 3D Reconstruction from Casual 360° Captures" />
+  <meta name="keywords" content="" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FullCircle</title>
+  <link rel="icon" href="./logos/favicon.ico" sizes="any">
+  <link rel="shortcut icon" href="./logos/favicon.ico" type="image/x-icon">
+  <link rel="icon" type="image/png" href="./logos/favicon.png" sizes="180x180">
+  <link rel="stylesheet" href="./static/css/bulma.min.css" />
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css" />
+  <link rel="stylesheet" href="./static/css/index.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+
+  <style>
+    :root {
+      --c-text: #1f2937;
+      --c-link: #1e88e5;
+      --c-hover: #f28c28;
+      --c-muted: #4b5563;
+      --c-title: #111;
+      --c-bottom-text: white;
+      --c-bottom-bg: #111827;
+      --c-bottom-bg-hover: #374151;
+      --c-tldr-bg: #341b1b;
+
+      --fs-title: 3rem;
+      --fs-authors: 1.2rem;
+      --fs-small: 0.89rem;
+      --fs-section-title: 1.4rem;
+      --fs-button: 15px;
+      --fs-caption: 0.9rem;
+      --fs-bibtex: 0.62rem;
+      --fs-tldr: 0.85rem;
+      --toc-sidebar-top: 7rem;
+    }
+    body {
+      font-family: 'Noto Sans', sans-serif;
+      color: var(--c-text);
+    }
+    .page-width {
+      max-width: 1000px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    
+    /* header */
+    .paper-title {
+      font-size: var(--fs-title);
+      line-height: 1.12;
+      font-weight: 400;
+      color: var(--c-title);
+      margin-bottom: 1rem;
+    }
+    .paper-authors {
+      text-align: center;
+      margin-top: 1.25rem;
+    }
+    .authors-inline {
+      margin: 0 auto 0.35rem;
+      font-size: var(--fs-authors);
+      line-height: 1.6;
+    }    
+    .authors-inline a {
+      color: var(--c-link);
+      text-decoration: none;
+      white-space: nowrap;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+    .authors-inline a:hover {
+      color: var(--c-hover) !important;
+      text-decoration: none !important;
+    }
+    .affiliations,
+    .equal-contribution {
+      color: var(--c-muted);
+      font-size: var(--fs-small);
+      margin-bottom: 0.8rem;
+    }
+    .abstract-text {
+      font-size: var(--fs-small);
+      line-height: 1.5;
+      text-align: justify;
+    }
+
+    /* section */
+    .section-title {
+      font-size: var(--fs-section-title);
+      text-align: left;
+    }
+
+    /* buttons */
+    .custom-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      background: var(--c-bottom-bg);
+      color: var(--c-bottom-text);
+      padding: 10px 18px;
+      border-radius: 20px;
+      min-width: 100px;
+      font-size: var(--fs-button);
+      transition: 0.2s ease;
+      margin: 0.1rem;
+      border: none;
+      cursor: pointer;
+      box-sizing: border-box;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .custom-button:hover {
+      background: var(--c-bottom-bg-hover);
+      color: var(--c-bottom-text);
+      transform: translateY(-1px);
+    }
+    .custom-button.active {
+      background: var(--c-bottom-bg-hover);
+      color: var(--c-bottom-text);
+    }
+    .custom-button .icon {
+      width: 1.5em;
+      height: 1.5em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .custom-button .icon i {
+      font-size: var(--fs-small);
+      line-height: 1;
+    }
+    .results-link {
+      color: var(--c-link);
+    }
+    .results-link:hover {
+      color: var(--c-hover);
+    }
+
+    /* media */
+    .merged-video {
+      width: 100%;
+      border-radius: 6px;
+    }
+    .video-container {
+      display: none;
+    }
+    .video-container.active {
+      display: block;
+    }
+    .merged-label-row {
+      display: flex;
+      width: 100%;
+    }
+    .merged-label-item {
+      flex: 1; 
+      text-align: center;
+      font-weight: 500;
+      font-size: var(--fs-caption);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+    }
+    .merged-label-item .cam-icon {
+      height: 2.0em;
+    }
+    .cam-icon {
+      height: 1.2em;
+      vertical-align: middle;
+    }
+    .logo-label-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      width: 100%;
+      margin-top: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .logo-label-item {
+      text-align: center;
+      font-weight: 500;
+      font-size: var(--fs-caption);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.2rem;
+    }
+
+    /* bibtex */
+    .bibtex-section h2 {
+      font-size: var(--fs-section-title);
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+    .bibtex-container {
+      position: relative;
+      background: #f5f5f5;
+      border-radius: 6px;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+    .bibtex-container pre {
+      margin: 0;
+      font-family: Consolas, Monaco, monospace;
+      font-size: var(--fs-bibtex);
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .bibtex-container code {
+      font-family: inherit;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: #e0e0e0;
+      border: none;
+      border-radius: 4px;
+      padding: 0.3rem 0.55rem;
+      font-size: var(--fs-caption);
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: #d6d6d6;
+    }
+
+    .tldr-box {
+      margin: 1rem auto 2rem;
+      padding: 0.5rem 0.5rem;
+      background: var(--c-tldr-bg);
+      border-radius: 14px;
+      font-size: var(--fs-tldr);
+      line-height: 1.45;
+      color: white;
+    }
+
+    .toc-sidebar {
+      display: none;
+    }
+    @media (min-width: 1420px) {
+      .toc-sidebar {
+        display: block;
+        position: fixed;
+        top: var(--toc-sidebar-top);
+        left: calc((100vw - 1000px) / 2 - 12.5rem);
+        width: 11.75rem;
+        max-height: calc(100vh - var(--toc-sidebar-top) - 1rem);
+        overflow-y: auto;
+        z-index: 5;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        color: var(--c-muted);
+        padding-right: 0.25rem;
+      }
+      .toc-sidebar .toc-heading {
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--c-title);
+        margin-bottom: 0.5rem;
+      }
+      .toc-sidebar a {
+        display: block;
+        color: var(--c-muted);
+        text-decoration: none;
+        padding: 0.2rem 0 0.2rem 0.55rem;
+        border-left: 2px solid #e5e7eb;
+        transition: color 0.15s ease, border-color 0.15s ease;
+      }
+      .toc-sidebar a:hover {
+        color: var(--c-link);
+        border-left-color: var(--c-link);
+      }
+    }
+    .toc-anchor {
+      display: block;
+      height: 0;
+      overflow: hidden;
+      scroll-margin-top: 0.75rem;
+    }
+
+    /* media */
+    @media (max-width: 768px) {
+      :root {
+        --fs-title: 2rem;
+        --fs-authors: 1rem;
+        --fs-section-title: 1.15rem;
+        --fs-button: 14px;
+        --fs-caption: 0.8rem;
+        --fs-bibtex: 0.45rem;
+      }
+      body {
+        padding-left: 12px;
+        padding-right: 12px;
+      }
+      .hero-body {
+        padding: 2rem 1rem;
+      }
+      .paper-title {
+        line-height: 1.2;
+      }
+      .authors-inline {
+        line-height: 1.8;
+      }
+      .authors-inline a {
+        white-space: normal;
+      }
+      .custom-button {
+        width: 100%;
+        max-width: 260px;
+      }
+      .logo-label-row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-top: 0.2rem;
+        margin-bottom: 0.6rem;
+      }
+      .bibtex-container {
+        padding: 0.75rem;
+      }
+      .copy-btn {
+        position: static;
+        margin-top: 0.75rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="toc-sidebar" aria-label="Page contents">
+    <div class="toc-heading">Contents</div>
+    <a href="#abstract">Abstract</a>
+    <a href="#can-casual-capture-make-3d-dataset-creation-scalable">Can casual capture make 3D dataset creation scalable?</a>
+    <a href="#but-why-not-just-use-a-360-camera">But why not just use a 360° camera?</a>
+    <a href="#so-lets-use-360-images-but-how">So let's use 360° images, but how?</a>
+    <a href="#the-challenge-is-you-the-capturer">The challenge is you, the capturer!</a>
+    <a href="#how-do-we-remove-the-operator-from-360-captures-reliably">How do we remove the operator from 360° captures reliably?</a>
+    <a href="#what-about-omnidirectional-segmentation">What about omnidirectional segmentation?</a>
+    <a href="#results">Results</a>
+    <a href="#bibtex">BibTeX</a>
+  </nav>
+  <!-- header -->
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container page-width">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <!-- title -->
+            <h1 class="title is-3 paper-title">
+              <span style="font-weight: bold;">FullCircle:</span><br>
+              <span style="font-weight: normal;">Effortless 3D Reconstruction from Casual 360° Captures</span>
+            </h1>
+            <!-- authors -->
+            <div class="paper-authors">
+              <div class="authors-inline">
+                <a href="https://youlenda.github.io" target="_blank">Yalda Foroutan</a><sup>*1</sup>,
+                <a href="https://ipekoztas.github.io" target="_blank">Ipek Oztas</a><sup>*1,2</sup>,
+                <a href="http://drebain.com" target="_blank">Daniel Rebain</a><sup>3</sup>,
+                <a href="https://www.cs.bilkent.edu.tr/~adundar/" target="_blank">Aysegul Dundar</a><sup>2</sup>,
+              </div>
+
+              <div class="authors-inline">
+                <a href="https://www.cs.ubc.ca/~kmyi/" target="_blank">Kwang Moo Yi</a><sup>3</sup>,
+                <a href="https://lilygoli.github.io" target="_blank">Lily Goli</a><sup>&dagger;4</sup>,
+                <a href="https://theialab.ca" target="_blank">Andrea Tagliasacchi</a><sup>&dagger;1,4</sup>
+              </div>
+            
+              <div class="affiliations">
+                <div><sup>1</sup> Simon Fraser University, <sup>2</sup> Bilkent University,</div>
+                <div><sup>3</sup> University of British Columbia, <sup>4</sup> University of Toronto</div>
+              </div>
+            
+              <p class="equal-contribution">
+                <sup>*</sup> Equal contribution.
+                <br><sup>&dagger;</sup> Equal advising.
+              </p>
+            </div>
+            <!-- external links -->
+            <a href="https://arxiv.org/abs/2603.22572" class="custom-button"><span class="icon"><i class="ai ai-arxiv" ></i></span><span>arXiv</span></a>
+            <a href="gallery.html" class="custom-button"><span class="icon"><i class="fas fa-images"></i></span><span>Gallery</span></a>
+            <a href="https://github.com/theialab/fullcircle" class="custom-button"><span class="icon"><i class="fab fa-github"></i></span><span>Code</span></a>
+            <a href="https://huggingface.co/datasets/youlenda/FullCircle" class="custom-button"><span class="icon"><img src="./logos/huggingface.svg" style="height:1.2em;vertical-align:middle;"></span><span>Data</span></a>
+            <div class="tldr-box">
+              TL;DR: After showing the data capture efficiency of 360° cameras, we address a key challenge in casual 360° capture: the always-visible camera operator.
+            </div>
+            <!-- abstract -->
+            <div class="columns is-centered">
+              <div class="column" style="max-width: 1000px; flex: none; width: 100%;">
+                <span class="toc-anchor" id="abstract"></span>
+                <h2 class="section-title">Abstract</h2>
+                <p class="abstract-text">
+                  Radiance fields have emerged as powerful tools for 3D scene reconstruction.
+                  However, casual capture remains challenging due to the narrow field of view of perspective cameras, which limits viewpoint coverage and feature 
+                  correspondences necessary for reliable camera calibration and reconstruction.
+                  While commercially available 360° cameras offer significantly broader coverage than perspective cameras for the same capture effort, 
+                  existing 360° reconstruction methods require special capture protocols and pre-processing steps that undermine the promise of radiance fields: 
+                  effortless workflows to capture and reconstruct 3D scenes. 
+                  We propose a practical pipeline for reconstructing 3D scenes directly from raw 360° camera captures.
+                  Our pipeline requires no special capture protocols or pre-processing, and exhibits robustness to a prevalent source of reconstruction errors: 
+                  the human operator that is visible in all 360° imagery.
+                  To facilitate evaluation, we introduce a multi-tiered dataset of scenes captured as raw dual-fisheye images, establishing a benchmark for robust 
+                  casual 360° reconstruction.
+                  Our method significantly outperforms not only vanilla 3DGS for 360° cameras but also robust perspective baselines when perspective cameras are 
+                  simulated from the same capture, demonstrating the advantages of 360° capture for casual reconstruction.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="columns is-centered">
+    <div class="column page-width">
+      <div class="columns is-vcentered">
+        <div class="column is-7">
+          <span class="toc-anchor" id="can-casual-capture-make-3d-dataset-creation-scalable"></span>
+          <h2 class="section-title">Can casual capture make 3D dataset creation scalable?</h2>
+          <p class="subtitle is-5 section-description">
+            A common approach for 3D-reconstructible scene capture is to record a short handheld iPhone video, split it into frames, and feed them to a reconstruction 
+            model. This is appealing because it works <i>casually</i>, without special instructions or careful setup during capture, making it easy to scale to many 
+            scenes. The catch is that a phone camera has a limited field of view. What feels like a full sweep of the scene often still leaves large parts unseen, 
+            which can lead to <u>holes and artifacts</u> in the final reconstruction.
+          </p>
+        </div>
+        
+        <div class="column is-5 has-text-centered">
+          <video class="merged-video" autoplay muted loop playsinline style="max-width: 250px; width: 100%; display: block; margin: 0 auto;">
+            <source src="static/videos/360vspers/pers.mp4" type="video/mp4">
+          </video>
+          <div class="merged-label-item" style="flex-direction: column; gap: 0.15rem;">
+            <span>Pinhole camera</span>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 1px; line-height: 1;">
+              <span>(</span>
+              <img src="logos/camera-1.png" class="cam-icon" style="height: 0.9em;">
+              <span style="font-weight: bold; margin: 0;">-</span>
+              <img src="logos/camera-1.png" class="cam-icon" style="height: 0.9em;">
+              <span>)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <span class="toc-anchor" id="but-why-not-just-use-a-360-camera"></span>
+      <h2 class="section-title" style="text-align: left;">But why not just use a 360° camera?</h2>
+      <p class="subtitle is-5 section-description" style="width: 100%; text-align: center; margin: 0 0 0.75rem 0;">
+        A natural idea, then, is to increase the field of view to 360°, and use commercially available dual-fisheye cameras along with methods like 3DGRT for 360° 
+        reconstruction. But how much does that actually help in a controlled setting? 
+      </p>
+      <p class="subtitle is-5 section-description" style="width: 100%; text-align: center; margin: 0 0 0.75rem 0;">
+        We <b>benchmark</b> the effect of replacing a perspective camera with a 360° camera under the same fixed training and test trajectories.
+        The benefits appear at two levels: better camera calibration and better reconstruction.
+      </p>
+
+      <div class="columns is-vcentered">
+        <div class="column is-5 has-text-centered">
+          <video class="merged-video" autoplay muted loop playsinline style="max-width: 250px; width: 100%; display: block; margin: 0 auto;">
+            <source src="static/videos/360vspers/360pers.mp4" type="video/mp4">
+          </video>
+          <div class="merged-label-item" style="flex-direction: column; gap: 0.15rem;">
+            <span>360° for calibration</span>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 1px; line-height: 1;">
+              <span>(</span>
+              <img src="logos/fisheye-1.png" class="cam-icon" style="height: 0.9em;">
+              <span style="font-weight: bold; margin: 0;">-</span>
+              <img src="logos/camera-1.png" class="cam-icon" style="height: 0.9em;">
+              <span>)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="column is-7">
+          <p class="subtitle is-5 section-description">
+            We first use the 360° images for camera calibration in COLMAP, then undistort them into perspective images for reconstruction. We use reconstruction quality 
+            here as a proxy for better camera calibration. The result still has holes, because reconstruction is performed from undistorted perspective images, but notice 
+            how the <u>floater artifacts in the middle of the scene disappear</u> thanks to the improved camera calibration.
+          </p>
+        </div>
+      </div>
+      
+    <div class="columns is-vcentered">
+      <div class="column is-7">
+        <p class="subtitle is-5 section-description">
+          We then use 360° imagery for both calibration and reconstruction by training directly on the raw dual-fisheye images. This preserves the calibration benefits 
+          while also keeping the full scene coverage, and you can see how the added coverage <u>removes the holes</u> in the reconstruction much more effectively.
+        </p>
+      </div>
+
+      <div class="column is-5 has-text-centered">
+        <video class="merged-video" autoplay muted loop playsinline style="max-width: 250px; width: 100%; display: block; margin: 0 auto;">
+          <source src="static/videos/360vspers/360.mp4" type="video/mp4">
+        </video>
+        
+        <div class="merged-label-item" style="flex-direction: column; gap: 0.15rem;">
+          <span>360° for calibration + reconstruction</span>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 1px; line-height: 1;">
+            <span>(</span>
+            <img src="logos/fisheye-1.png" class="cam-icon" style="height: 0.9em;">
+            <span style="font-weight: bold; margin: 0;">-</span>
+            <img src="logos/fisheye-1.png" class="cam-icon" style="height: 0.9em;">
+            <span>)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column page-width has-text-centered">
+        <p class="subtitle is-5 section-description" style="text-align: center;">
+          Below is a comparison of all three setups side by side, and the fixed controlled train trajectory (<span style="color: purple;">purple</span>) and test 
+          trajectory (<span style="color: #d4aa00;">yellow</span>) shared across them:
+        </p>
+        <video class="merged-video" autoplay muted loop playsinline style="max-width: 1100px; width: 100%; display: block; margin: 0 auto;">
+          <source src="static/videos/360vspers/360vspers_merged.mp4" type="video/mp4">
+        </video>
+
+        <div class="logo-label-row">
+          <div class="logo-label-item">
+            <img src="logos/camera-1.png" class="cam-icon">
+            <span style="font-weight: bold; margin: 0 2px;">-</span>
+            <img src="logos/camera-1.png" class="cam-icon">
+          </div>
+        
+          <div class="logo-label-item">
+            <img src="logos/fisheye-1.png" class="cam-icon">
+            <span style="font-weight: bold; margin: 0 2px;">-</span>
+            <img src="logos/camera-1.png" class="cam-icon">
+          </div>
+        
+          <div class="logo-label-item">
+            <img src="logos/fisheye-1.png" class="cam-icon">
+            <span style="font-weight: bold; margin: 0 2px;">-</span>
+            <img src="logos/fisheye-1.png" class="cam-icon">
+          </div>
+        
+          <div class="logo-label-item">
+            Camera path
+          </div>
+        </div>
+
+        <p class="subtitle is-5 section-description" style="text-align: center;">
+            Notice how the reconstruction from 360° imagery is the most robust to out-of-distribution test views that lie far from the capture trajectory.
+          </p>
+      </div>
+    </div>
+
+    <div class="columns is-vcentered">
+      <div class="column is-5 has-text-centered">
+        <video class="merged-video" autoplay muted loop playsinline style="max-width: 600px; width: 100%; display: block; margin: 0 auto;">
+          <source src="static/videos/stitch.MOV" type="video/mp4">
+        </video>
+        <div class="merged-label-row" style="justify-content: center; margin-bottom: 0;">
+          <div class="merged-label-item">
+            <span style="margin-left: 6px;">Stitched omnidirectional image</span>
+          </div>
+        </div>
+      </div>
+    
+      <div class="column is-7">
+        <span class="toc-anchor" id="so-lets-use-360-images-but-how"></span>
+        <h2 class="section-title">So let's use 360° images, but how?</h2>
+        <p class="subtitle is-5 section-description">
+          A common option is to stitch the two fisheye views into a single omnidirectional image and use that for training.
+          However, stitching introduces <u>visible artifacts</u>, and using stitched images as supervision can degrade reconstruction quality.
+          This is why we instead work directly with the raw dual-fisheye frames.
+        </p>
+      </div>
+    </div>
+
+    <div class="columns is-vcentered">
+      <div class="column is-7">
+        <span class="toc-anchor" id="the-challenge-is-you-the-capturer"></span>
+        <h2 class="section-title">The challenge is <span style="color: red;">you, the capturer</span>!</h2>
+        <p class="subtitle is-5 section-description">
+          A 360° camera captures the full scene, but it also captures the <b>camera operator</b> in every frame. The operator shifts, moves their hand around, and changes during the capture.
+          As a result, if we naively train on raw dual-fisheye captures, <u>the operator can appear as artifacts</u> in the final rendering, degrading the quality.
+        </p>
+      </div>
+    
+      <div class="column is-5 has-text-centered">
+        <video class="merged-video" autoplay muted loop playsinline style="max-width: 250px; width: 100%; display: block; margin: 0 auto;">
+          <source src="static/videos/flat2-grt.mp4" type="video/mp4">
+        </video>
+      <div class="merged-label-row" style="justify-content: center; margin-bottom: 0;">
+        <div class="merged-label-item">
+          <span>Reconstructed operator</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="columns is-vcentered">
+    <div class="column is-5 has-text-centered">
+      <video class="merged-video" autoplay muted loop playsinline style="max-width: 250px; width: 100%; display: block; margin: 0 auto;">
+        <source src="static/videos/flat2-sls.mp4" type="video/mp4">
+      </video>
+      <div class="merged-label-row" style="justify-content: center; margin-bottom: 0;">
+        <div class="merged-label-item">
+          <span>Reconstructed operator in SLS</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="column is-7">
+      <p class="subtitle is-5 section-description">
+        Unlike ordinary transient effects that can often be filtered out by robust reconstruction methods that track rendering error residuals, 
+        <u>the operator is usually not transient enough</u> 
+        to be detected by these methods reliably: during capture, people often remain still for long periods while only moving their arms or the camera slightly. 
+        We show that SpotLessSplats (SLS) struggles in one such scene.
+      </p>
+   </div>
+  </div>
+
+  <div class="columns is-centered">
+    <div class="column page-width">
+      <span class="toc-anchor" id="how-do-we-remove-the-operator-from-360-captures-reliably"></span>
+      <h2 class="section-title">How do we remove the operator from 360° captures reliably?</h2> 
+      <p class="subtitle is-5 section-description">
+        We design a pipeline that utilizes general-purpose vision foundation models to reliably segment the camera operator in highly distorted 360° dual-fisheye 
+        images, without extra training, fine-tuning, or manual prompts.
+      </p>
+      <ul class="subtitle is-5 section-description" style="padding-left: 1.5rem; list-style-type: disc; list-style-position: outside;">
+        <li>We first run YOLOv8 and SAMv2 on overlapping image patches to get a coarse estimate of the operator's location. While the masks are often incomplete due to 
+          distortion and partial crops, they provide a reliable estimate of the operator's center.</li>
+        <li>We then re-center the omnidirectional image on this estimated center and render synthetic fisheye views from the re-centered 360° image.</li>
+        <li>Next, we run SAMv2 again, this time using only the center point as a positive prompt. This produces a much more complete mask of the operator in the 
+          re-centered fisheye frames.</li>
+        <li>Finally, we map these masks back to the original dual-fisheye inputs.</li>
+      </ul>
+      <img src="static/images/maskpipeline_v3.png" alt="Masking pipeline" class="merged-video" style="max-width: 1100px; width: 100%; display: block; margin: 0 auto;">
+        <div class="merged-label-row" style="justify-content: center; margin-bottom: 0;">
+          <div class="merged-label-item">
+            <span>Our masking pipeline</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-vcentered">
+      <div class="column is-7">
+        <span class="toc-anchor" id="what-about-omnidirectional-segmentation"></span>
+        <h2 class="section-title">What about omnidirectional segmentation?</h2>
+        <p class="subtitle is-5 section-description">
+          An alternative masking strategy is to use a fine-tuned SAM-based model for omnidirectional images, such as OmniSAM, and prompt it with a "person" text label.
+          However, these methods are often <u>less robust in highly distorted regions</u>, which can leave residual operator pixels that later appear as reconstruction 
+          artifacts.
+        </p>
+      </div>
+    
+      <div class="column is-5 has-text-centered">
+        <video class="merged-video" autoplay muted loop playsinline style="max-width: 350px; width: 100%; display: block; margin: 0 auto;">
+          <source src="static/videos/mask_omnisam.mp4" type="video/mp4">
+        </video>
+        <div class="merged-label-row" style="justify-content: center; margin-bottom: 0;">
+          <div class="merged-label-item">
+            <span>OmniSAM failure in operator segmentation</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-vcentered">
+      <div class="column is-5 has-text-centered">
+        <video class="merged-video" autoplay muted loop playsinline style="max-width: 350px; width: 100%; display: block; margin: 0 auto;">
+          <source src="static/videos/mask_ours.mp4" type="video/mp4">
+        </video>
+        <div class="merged-label-row" style="justify-content: center; margin-bottom: 0;">
+          <div class="merged-label-item">
+            <span>Our masking result</span>
+          </div>
+        </div>
+      </div>
+    
+      <div class="column is-7">
+        <p class="subtitle is-5 section-description">
+          In contrast, our method masks the operator reliably even in heavily distorted regions, producing much cleaner masks and preventing these residual pixels 
+          from appearing as artifacts in the final reconstruction.
+        </p>
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column page-width has-text-centered">
+        <span class="toc-anchor" id="results"></span>
+        <h2 class="section-title">Results</h2>
+        <p class="subtitle is-5 section-description">
+          Our method produces clean, high-fidelity reconstructions without visible distractor artifacts, outperforming baseline methods.
+          Below, we show comparisons with SLS as a robust 3DGS reconstruction method on both perspective images and dual-fisheye frames, as well as vanilla 3DGRT.
+        </p>
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+        <div class="buttons are-small is-multiline is-centered">
+          <button class="custom-button active" onclick="showVideo('video1', 'fisheye', this)">Flat 2</button>
+          <button class="custom-button" onclick="showVideo('video2', 'fisheye', this)">Room 2</button>
+          <button class="custom-button" onclick="showVideo('video3', 'fisheye', this)">Lounge</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column has-text-centered">
+        <div id="video1" class="video-container active" data-group="fisheye">
+          <video class="merged-video" src="static/videos/results/flat2.mp4" autoplay loop muted playsinline style="max-width: 1100px; width: 100%; display: block; margin: 0 auto;"></video>
+        </div>
+
+        <div id="video2" class="video-container" data-group="fisheye">
+          <video class="merged-video" src="static/videos/results/room2.mp4" autoplay loop muted playsinline style="max-width: 1100px; width: 100%; display: block; margin: 0 auto;"></video>
+        </div>
+
+        <div id="video3" class="video-container" data-group="fisheye">
+          <video class="merged-video" src="static/videos/results/lounge.mp4" autoplay loop muted playsinline style="max-width: 1100px; width: 100%; display: block; margin: 0 auto;"></video>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="columns is-centered">
+      <div class="column page-width has-text-centered">
+        <p class="subtitle is-5 section-description" style="text-align: center; margin-top: 0.75rem;">
+          More qualitative results are available <a href="gallery.html" class="results-link">here</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="columns">
+  <div class="column page-width">
+    <span class="toc-anchor" id="bibtex"></span>
+    <h2 class="section-title">BibTeX</h2>
+    <div class="bibtex-container">
+      <pre><code>@article{foroutan2026fullcircle,
+        title   = {FullCircle: Effortless 3D Reconstruction from Casual 360° Captures},
+        author  = {Foroutan, Yalda and Oztas, Ipek and Rebain, Daniel and Dundar, Aysegul and Yi, Kwang Moo and Goli, Lily and Tagliasacchi, Andrea},
+        journal = {arXiv preprint arXiv:2603.22572},
+        year    = {2026}
+    }</code></pre>
+      <button class="copy-btn" onclick="copyBibtex()">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showVideo(videoId, group, btn) {
+    const videos = document.querySelectorAll('.video-container[data-group="' + group + '"]');
+    videos.forEach(video => video.classList.remove('active'));
+
+    const selectedVideo = document.getElementById(videoId);
+    if (selectedVideo) selectedVideo.classList.add('active');
+
+    if (btn) {
+      const buttonsContainer = btn.parentElement;
+      const buttons = buttonsContainer.querySelectorAll('.custom-button');
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  }
+
+  function copyBibtex() {
+    const bibtex = document.querySelector('.bibtex-container code').textContent;
+    navigator.clipboard.writeText(bibtex).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied';
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+      }, 1500);
+    });
+  }
+</script>
+
+</body>
+</html>
