@@ -280,6 +280,9 @@
         color: var(--c-link);
         border-left-color: var(--c-link);
       }
+      .toc-sidebar a.active {
+        font-weight: 600;
+      }
     }
     .toc-anchor {
       display: block;
@@ -779,6 +782,39 @@
       }, 1500);
     });
   }
+
+  (function initScrollSpy() {
+    const tocLinks = document.querySelectorAll('.toc-sidebar a[href^="#"]');
+    const anchors = Array.from(tocLinks).map(link => {
+      const id = link.getAttribute('href').slice(1);
+      return { id, el: document.getElementById(id), link };
+    }).filter(a => a.el);
+
+    function update() {
+      const scrollY = window.scrollY;
+      const viewportBottom = scrollY + window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+
+      let current = null;
+
+      if (viewportBottom >= docHeight - 2) {
+        current = anchors[anchors.length - 1];
+      } else {
+        for (let i = anchors.length - 1; i >= 0; i--) {
+          if (anchors[i].el.getBoundingClientRect().top <= 80) {
+            current = anchors[i];
+            break;
+          }
+        }
+      }
+
+      tocLinks.forEach(l => l.classList.remove('active'));
+      if (current) current.link.classList.add('active');
+    }
+
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+  })();
 </script>
 
 </body>
