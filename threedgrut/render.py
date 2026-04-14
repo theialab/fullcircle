@@ -231,6 +231,7 @@ class Renderer:
         cc_lpips = []
         inference_time = []
 
+        test_images = []
         best_psnr = -1.0
         worst_psnr = 2**16 * 1.0
 
@@ -336,9 +337,6 @@ class Renderer:
         mean_psnr = np.mean(psnr)
         mean_ssim = np.mean(ssim)
         mean_lpips = np.mean(lpips)
-        mean_cc_psnr = np.mean(cc_psnr)
-        mean_cc_ssim = np.mean(cc_ssim)
-        mean_cc_lpips = np.mean(cc_lpips)
         std_psnr = np.std(psnr)
         mean_inference_time = np.mean(inference_time)
 
@@ -355,9 +353,6 @@ class Renderer:
             mean_psnr=mean_psnr,
             mean_ssim=mean_ssim,
             mean_lpips=mean_lpips,
-            mean_cc_psnr=mean_cc_psnr,
-            mean_cc_ssim=mean_cc_ssim,
-            mean_cc_lpips=mean_cc_lpips,
             std_psnr=std_psnr,
         )
 
@@ -370,9 +365,6 @@ class Renderer:
             self.writer.add_scalar("psnr/test", mean_psnr, self.global_step)
             self.writer.add_scalar("ssim/test", mean_ssim, self.global_step)
             self.writer.add_scalar("lpips/test", mean_lpips, self.global_step)
-            self.writer.add_scalar("cc_psnr/test", mean_cc_psnr, self.global_step)
-            self.writer.add_scalar("cc_ssim/test", mean_cc_ssim, self.global_step)
-            self.writer.add_scalar("cc_lpips/test", mean_cc_lpips, self.global_step)
             self.writer.add_scalar("time/inference/test", mean_inference_time, self.global_step)
 
             if best_psnr_img is not None:

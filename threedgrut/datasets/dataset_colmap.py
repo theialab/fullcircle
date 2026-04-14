@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import os
 import platform
 
 import ncore.sensors
@@ -32,6 +33,7 @@ from torch.utils.data import Dataset
 
 from threedgrut.utils.logger import logger
 
+from .camera_models import image_points_to_camera_rays, pixels_to_image_points
 from .protocols import Batch, BoundedMultiViewDataset, DatasetVisualization
 from .utils import (
     compute_max_radius,
@@ -90,28 +92,35 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.load_camera_data()
 
         suffix = self.test_frame_suffix
-        if self.split == "train":
-            split_mask = np.array([not os.path.splitext(os.path.basename(p))[0].endswith(suffix) for p in self.image_paths])
+        has_suffix_frames = any(
+            os.path.splitext(os.path.basename(p))[0].endswith(suffix)
+            for p in self.image_paths
+        ) if suffix else False
+
+        if has_suffix_frames:
+            if self.split == "train":
+                split_mask = np.array([not os.path.splitext(os.path.basename(p))[0].endswith(suffix) for p in self.image_paths])
+            else:
+                split_mask = np.array([os.path.splitext(os.path.basename(p))[0].endswith(suffix) for p in self.image_paths])
+
+            self.cam_extrinsics = [e for e, keep in zip(self.cam_extrinsics, split_mask) if keep]
+            self.poses = self.poses[split_mask].astype(np.float32)
+            self.image_paths = self.image_paths[split_mask]
+            self.camera_centers = self.camera_centers[split_mask]
+            self.mask_paths = self.mask_paths[split_mask]
+            self.dilated_mask_paths = self.dilated_mask_paths[split_mask]
+
+            self.n_frames = self.poses.shape[0]
+            print(f"After suffix filtering ({self.split}): {self.n_frames} frames")
         else:
-            split_mask = np.array([os.path.splitext(os.path.basename(p))[0].endswith(suffix) for p in self.image_paths])
+            print(f"No frames with suffix '{suffix}' found, using interval-based splitting only")
 
-        self.cam_extrinsics = [e for e, keep in zip(self.cam_extrinsics, split_mask) if keep]
-        self.poses = self.poses[split_mask].astype(np.float32)
-        self.image_paths = self.image_paths[split_mask]
-        self.camera_centers = self.camera_centers[split_mask]
-        self.mask_paths = self.mask_paths[split_mask]
-        self.dilated_mask_paths = self.dilated_mask_paths[split_mask]
-
-        # Update frame count after split filtering
-        self.n_frames = self.poses.shape[0]
-        print(f"After split filtering ({self.split}): {self.n_frames} frames")
-        
         # Create boolean mask for filtering
         indices_mask = np.ones(self.n_frames, dtype=bool)
 
         # If test_split_interval is set, every test_split_interval frame will be excluded from the training set
         # If test_split_interval is non-positive, all images will be used for training and testing
-        if self.test_split_interval > 0:
+        if not has_suffix_frames and self.test_split_interval > 0:
             # Extract frame numbers from image paths
             # Assuming paths are like "camera1/frame_001.png", "camera2/frame_001.png", etc.
             frame_numbers = []
@@ -184,6 +193,10 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             self.cam_extrinsics = read_colmap_extrinsics_text(cameras_extrinsic_file)
             self.cam_intrinsics = read_colmap_intrinsics_text(cameras_intrinsic_file)
 
+        self._camera_id_to_idx = {
+            cam_id: idx for idx, cam_id in enumerate(self.cam_intrinsics)
+        }
+
     def get_images_folder(self):
         downsample_suffix = (
             "" if self.downsample_factor == 1 else f"_{self.downsample_factor}"
@@ -208,7 +221,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             v = np.arange(h).repeat(w)
             out_shape = (1, h, w, 3)
             params = OpenCVPinholeCameraModelParameters(
-                resolution=np.array([w, h], dtype=np.int64),
+                resolution=np.array([w, h], dtype=np.uint64),
                 shutter_type=ShutterType.GLOBAL,
                 principal_point=np.array([w, h], dtype=np.float32) / 2,
                 focal_length=np.array([focalx, focaly], dtype=np.float32),
@@ -342,7 +355,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             u = np.tile(np.arange(w), h)
             v = np.arange(h).repeat(w)
             out_shape = (1, h, w, 3)
-            resolution = np.array([w, h]).astype(np.int64)
+            resolution = np.array([w, h]).astype(np.uint64)
             principal_point = params[2:4].astype(np.float32)
             focal_length = params[0:2].astype(np.float32)
             radial_coeffs = params[4:].astype(np.float32)
@@ -496,9 +509,9 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             # Mask path
             images_folder = self.get_images_folder()
             downsample_suffix = "" if self.downsample_factor == 1 else f"_{self.downsample_factor}"
-            masks_base = f"masks{downsample_suffix}"
             rel_path = os.path.relpath(image_path, os.path.join(self.path, images_folder))
             mask_stem = os.path.splitext(rel_path)[0] + "_mask.png"
+            masks_base = f"masks{downsample_suffix}"
             self.mask_paths.append(os.path.join(self.path, masks_base, f"masks-1{downsample_suffix}", mask_stem))
             self.dilated_mask_paths.append(os.path.join(self.path, masks_base, f"masks-20{downsample_suffix}", mask_stem))
             
@@ -525,8 +538,8 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                 rays_ori,
                 rays_dir,
                 camera_name,
+                pixel_coords,
             ) in self.intrinsics.items():
-                # Create new GPU tensors for this worker
                 worker_rays_ori = rays_ori.to(self.device, non_blocking=True)
                 worker_rays_dir = rays_dir.to(self.device, non_blocking=True)
                 worker_intrinsics[intr_id] = (
@@ -534,6 +547,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
                     worker_rays_ori,
                     worker_rays_dir,
                     camera_name,
+                    pixel_coords,
                 )
             self._worker_gpu_cache[worker_id] = worker_intrinsics
 
@@ -683,7 +697,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         # Get intrinsics for current worker
         worker_intrinsics = self._lazy_worker_intrinsics_cache()
 
-        camera_params_dict, rays_ori, rays_dir, camera_name = worker_intrinsics[intr]
+        camera_params_dict, rays_ori, rays_dir, camera_name, pixel_coords = worker_intrinsics[intr]
 
         sample = {
             "rgb_gt": data,

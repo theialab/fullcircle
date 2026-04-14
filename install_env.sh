@@ -19,7 +19,7 @@
 # Exit on error
 set -e
 
-CONDA_ENV=${1:-"FullCircle"}
+CONDA_ENV=${1:-"fullcircle"}
 
 # parse an optional second arg WITH_GCC11 to also manually use gcc-11 within the environment
 WITH_GCC11=false
@@ -82,8 +82,11 @@ if [ "$WITH_GCC11" = true ]; then
         exit 1
     fi
 
-    GCC_11_PATH=$(which gcc-11)
-    GXX_11_PATH=$(which g++-11)
+    HOST_CC_PATH=$(which gcc-11)
+    HOST_CXX_PATH=$(which g++-11)
+else
+    HOST_CC_PATH=$(which gcc)
+    HOST_CXX_PATH=$(which g++)
 fi
 
 # Create and activate conda environment
@@ -99,22 +102,22 @@ else
 fi
 conda activate $CONDA_ENV
 
-# Set CC and CXX variables to gcc11 in the conda env
-if [ "$WITH_GCC11" = true ]; then
-    echo "Setting CC=$GCC_11_PATH and CXX=$GXX_11_PATH in conda environment"
+# Always clear stale compiler variables and set explicit host compiler paths.
+# This prevents reuse of deleted env compiler paths (e.g. .../envs/OldEnv/bin/...-g++).
+unset CC CXX CUDAHOSTCXX CMAKE_CUDA_HOST_COMPILER
+conda env config vars unset CC CXX CUDAHOSTCXX CMAKE_CUDA_HOST_COMPILER >/dev/null 2>&1 || true
+echo "Setting CC=$HOST_CC_PATH and CXX=$HOST_CXX_PATH in conda environment"
+conda env config vars set CC=$HOST_CC_PATH CXX=$HOST_CXX_PATH CUDAHOSTCXX=$HOST_CXX_PATH
 
-    conda env config vars set CC=$GCC_11_PATH CXX=$GXX_11_PATH
+conda deactivate
+conda activate $CONDA_ENV
 
-    conda deactivate
-    conda activate $CONDA_ENV
-
-    # Make sure it worked
-    gcc_version=$($CC -dumpversion | cut -d '.' -f 1)
-    echo "gcc_version=$gcc_version"
-    if [ "$gcc_version" -gt 11 ]; then
-        echo "gcc version $gcc_version is still higher than 11, setting gcc-11 failed"
-        exit 1
-    fi
+# Make sure it worked
+gcc_version=$($CC -dumpversion | cut -d '.' -f 1)
+echo "gcc_version=$gcc_version"
+if [ "$WITH_GCC11" = true ] && [ "$gcc_version" -gt 11 ]; then
+    echo "gcc version $gcc_version is still higher than 11, setting gcc-11 failed"
+    exit 1
 fi
 
 conda env config vars set TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST

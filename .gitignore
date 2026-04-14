@@ -24,3 +24,7 @@ thirdparty/simple-knn/simple_knn.egg-info
 thirdparty/ncore/
 threedgrt_tracer/.ninja_log
 threedgrt_tracer/include/3dgrt/kernels/slang/*.cuh*
+
+scripts/downsample.sh
+scripts/masks_for_colmap/
+scripts/run_masks_for_colmap.sh

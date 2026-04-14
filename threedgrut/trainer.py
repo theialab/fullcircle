@@ -221,11 +221,6 @@ class Trainer3DGRUT:
             case _:
                 raise ValueError(f"unrecognized model.strategy {conf.strategy.method}")
 
-                self.strategy = MCMCStrategy(conf, self.model)
-                logger.info("🔆 Using MCMC strategy")
-            case _:
-                raise ValueError(f"unrecognized model.strategy {conf.strategy.method}")
-
     def setup_training(
         self,
         conf: DictConfig,
@@ -532,9 +527,9 @@ class Trainer3DGRUT:
         """
         rgb_gt = gpu_batch.rgb_gt
         rgb_pred = outputs["pred_rgb"]
-        capturer_mask    = (1 - gpu_batch.mask).bool()
-        dilated_mask = (1 - gpu_batch.dilated_mask).bool()
-
+        capturer_mask = (1 - gpu_batch.mask).bool() if gpu_batch.mask is not None else None
+        dilated_mask = (1 - gpu_batch.dilated_mask).bool() if gpu_batch.dilated_mask is not None else None
+        
         if gpu_batch.mask is not None:
             def rgb_to_xyz_srgb_d65(x):
                 M = torch.tensor([[0.4124564, 0.3575761, 0.1804375],
@@ -1478,6 +1473,8 @@ class Trainer3DGRUT:
             "build_as": CudaTimer(enabled=self.conf.enable_frame_timings),
         }
 
+        global_step = self.global_step
+        model = self.model
         for iter, batch in enumerate(self.train_dataloader):
             # Check if we have reached the maximum number of iterations
             if self.global_step >= conf.n_iterations:

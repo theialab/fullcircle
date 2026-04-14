@@ -5,6 +5,10 @@ defaults:
   - override hydra/job_logging: disabled
 
 path: ???
+seed_initialization: 42
+with_viser_gui: false
+post_processing:
+  method: null
 experiment_name: ""
 resume: ""
 out_dir: "./runs"

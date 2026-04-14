@@ -45,16 +45,6 @@ data/<scene_name>/
 ├── omni/images/         # 360° omnidirectional frames
 └── sparse/0/            # COLMAP reconstruction
 ```
-> [!NOTE]
-> Remember to set the DISPLAY environment variable if you are running on a remote server from the command line.
-
-Alternatively, use the viser GUI contributed by the community (@tangkangqi):
-```bash
-python train.py --config-name apps/nerf_synthetic_3dgut.yaml path=data/nerf_synthetic/lego with_viser_gui=True
-```
-> [!NOTE]
-> Remember to install viser first via `pip install viser` and forward the port 8080 to your local machine if you are running on a remote server.
-
 
 ## Usage
 

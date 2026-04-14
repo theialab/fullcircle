@@ -15,6 +15,13 @@
 
 #include <optix.h>
 
+#ifndef int32_t
+typedef int int32_t;
+#endif
+#ifndef uint32_t
+typedef unsigned int uint32_t;
+#endif
+
 #include <3dgrt/mathUtils.h>
 #include <3dgrt/particleDensity.h>
 
@@ -544,7 +551,7 @@ __device__ inline void processHitBwd(
         //   => groRayHitGrd_j = -grd_j * dot(grdsRayHitGrd * gscl, grd)
         const float grdScaledDot = dot(grdsRayHitGrd * gscl, grd);
         float3 grdRayHitGrd, groRayHitGrd;
-        if constexpr (SurfelPrimitive) {
+        if (SurfelPrimitive) {
             const float h = -gro.z / grd.z;
             grdRayHitGrd  = gscl * grdsRayHitGrd * h - make_float3(0.f, 0.f, (h / grd.z) * grdScaledDot);
             groRayHitGrd  = make_float3(0.f, 0.f, -grdScaledDot / grd.z);
