@@ -9,12 +9,14 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--scene", required=True)
+parser.add_argument("--data_root", default="data")
 parser.add_argument("--mapping", default="masking/mapping.txt")
 parser.add_argument("--radius_r", type=int, default=107)
 parser.add_argument("--camera_size", type=int, default=2880)
 args = parser.parse_args()
 
-data_dir = f"data/{args.scene}"
+data_dir = f"{args.data_root}/{args.scene}"
+
 omni_dir = f"{data_dir}/omni/images"
 centers_dir = f"{data_dir}/pre_masking/omni_masks_primary/centers/"
 

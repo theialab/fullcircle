@@ -9,12 +9,13 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--scene",       required=True)
+parser.add_argument("--data_root",   default="data")
 parser.add_argument("--mapping",     default="masking/mapping.txt")
 parser.add_argument("--radius_r",      type=int, default=107)
 parser.add_argument("--camera_size", type=int, default=2880)
 args = parser.parse_args()
 
-data_dir = f"data/{args.scene}"
+data_dir = f"{args.data_root}/{args.scene}"
 synthetic_masks_dir = f"{data_dir}/pre_masking/synthetic_masks/masks/0"
 R_synthetic = f"{data_dir}/pre_masking/synthetics/R.csv"
 

@@ -6,6 +6,7 @@ from lib.cam_utils import load_as_binary
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--scene", required=True)
+parser.add_argument("--data_root", default="data")
 parser.add_argument(
     "--camera",
     nargs="*",
@@ -22,7 +23,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-data_dir = f"data/{args.scene}"
+data_dir = f"{args.data_root}/{args.scene}"
 dilate_kernel = 9
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilate_kernel, dilate_kernel))
 

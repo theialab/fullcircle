@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCENE="${1:-room1}"
-DATAPATH="data/${SCENE}"
+DATAROOT="${2:-data}"
+DATAPATH="${DATAROOT}/${SCENE}"
 
 echo "[1/8] omnidirectionals → 16 perspectives"
 python masking/omni2perspective.py \
@@ -21,7 +22,7 @@ python masking/perspective2omni.py \
 
 echo "[4/8] omnidirectional directions → synthetic fisheyes"
 python masking/omni2synthetic.py \
-    --scene "${SCENE}" > /dev/null 2>&1
+    --scene "${SCENE}" --data_root "${DATAROOT}" > /dev/null 2>&1
 
 echo "[5/8] mask synthetic fisheyes (SAMv2 automatic segmentation & tracking)"
 python thirdparty/sam-ui/scripts/tracking_gui.py \
@@ -30,12 +31,12 @@ python thirdparty/sam-ui/scripts/tracking_gui.py \
     --headless > /dev/null 2>&1
 
 echo "[6/8] synthetic fisheye masks → omnidirectional masks (final)"
-python masking/synthetic2omni.py --scene "${SCENE}" > /dev/null 2>&1
+python masking/synthetic2omni.py --scene "${SCENE}" --data_root "${DATAROOT}" > /dev/null 2>&1
 
 echo "[7/8] omnidirectional masks → raw fisheye masks"
-python masking/omni2fisheye.py --scene "${SCENE}" > /dev/null 2>&1
+python masking/omni2fisheye.py --scene "${SCENE}" --data_root "${DATAROOT}" > /dev/null 2>&1
 
 echo "[8/8] dilate raw fisheye masks"
-python masking/dilate.py --scene "${SCENE}" > /dev/null 2>&1
+python masking/dilate.py --scene "${SCENE}" --data_root "${DATAROOT}" > /dev/null 2>&1
 
 echo "Masks saved in ${DATAPATH}/masks/"
