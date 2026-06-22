@@ -107,7 +107,7 @@ def fisheye_theta_from_radius(r, f, k1, k2, k3, k4):
         theta = theta - (r_d - r)/max(drd, 1e-12)
     return theta
 
-def load_rows(csv_path):
+def load_rows(csv_path, W_eq, H_eq):
     tmp = []
     with open(csv_path, "r", newline="") as f2:
         rdict2 = csv.DictReader(f2)

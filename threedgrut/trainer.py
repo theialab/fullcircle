@@ -528,32 +528,9 @@ class Trainer3DGRUT:
         rgb_gt = gpu_batch.rgb_gt
         rgb_pred = outputs["pred_rgb"]
         capturer_mask = (1 - gpu_batch.mask).bool() if gpu_batch.mask is not None else None
-        dilated_mask = (1 - gpu_batch.dilated_mask).bool() if gpu_batch.dilated_mask is not None else None
-        
+
         if gpu_batch.mask is not None:
-            def rgb_to_xyz_srgb_d65(x):
-                M = torch.tensor([[0.4124564, 0.3575761, 0.1804375],
-                                  [0.2126729, 0.7151522, 0.0721750],
-                                  [0.0193339, 0.1191920, 0.9503041]],
-                                device=x.device, dtype=x.dtype)
-                return torch.tensordot(x, M.t(), dims=1)
-
-            def xyz_to_lab(XYZ):
-                Xn, Yn, Zn = 0.95047, 1.0, 1.08883
-                x = XYZ[...,0]/Xn; y = XYZ[...,1]/Yn; z = XYZ[...,2]/Zn
-                eps, k = 216/24389, 24389/27
-                def f(t): 
-                    return torch.where(t > eps, t.pow(1/3), (k*t + 16)/116)
-                fx, fy, fz = f(x), f(y), f(z)
-                L = 116*fy - 16
-                return L
-
-            pred_L = xyz_to_lab(rgb_to_xyz_srgb_d65(rgb_pred.clamp(0,1)))
-            gt_L = xyz_to_lab(rgb_to_xyz_srgb_d65(rgb_gt.clamp(0,1)))
-            luma_mask = pred_L[...,None] < gt_L[...,None]
-            
-            local_luma_mask = luma_mask | dilated_mask
-            pixel_mask      = capturer_mask & local_luma_mask
+            pixel_mask = capturer_mask
             rgb_gt = rgb_gt * pixel_mask
             rgb_pred = rgb_pred * pixel_mask
 
@@ -565,10 +542,6 @@ class Trainer3DGRUT:
                     arr = (t.detach().to(torch.uint8) * 255).cpu().numpy().squeeze()
                     Image.fromarray(arr, mode="L").save(os.path.join(debug_dir, name))
 
-                save_mask(luma_mask,       "luma.png")
-                save_mask(dilated_mask,    "dilated.png")
-                save_mask(capturer_mask,   "capturer.png")
-                save_mask(local_luma_mask, "local_luma.png")
                 save_mask(pixel_mask,      "pixel.png")
                 torchvision.utils.save_image(rgb_gt[0].permute(2, 0, 1),   os.path.join(debug_dir, "rgb_gt.png"))
                 torchvision.utils.save_image(rgb_pred[0].permute(2, 0, 1), os.path.join(debug_dir, "rgb_pred.png"))

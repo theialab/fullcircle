@@ -10,18 +10,20 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--scene", required=True)
 parser.add_argument("--data_root", default="data")
+parser.add_argument("--pre_masking", default="pre_masking")
 parser.add_argument("--mapping", default="masking/mapping.txt")
 parser.add_argument("--radius_r", type=int, default=107)
 parser.add_argument("--camera_size", type=int, default=2880)
 args = parser.parse_args()
 
 data_dir = f"{args.data_root}/{args.scene}"
+pm = f"{data_dir}/{args.pre_masking}"
 
 omni_dir = f"{data_dir}/omni/images"
-centers_dir = f"{data_dir}/pre_masking/omni_masks_primary/centers/"
+centers_dir = f"{pm}/omni_masks_primary/centers/"
 
-R_synthetic = f"{data_dir}/pre_masking/synthetics/R.csv"
-out_synthetics_dir = f"{data_dir}/pre_masking/synthetics"
+R_synthetic = f"{pm}/synthetics/R.csv"
+out_synthetics_dir = f"{pm}/synthetics"
 os.makedirs(out_synthetics_dir, exist_ok=True)
 
 ## Load camera & image
@@ -42,6 +44,16 @@ img_paths = sorted(glob.glob(os.path.join(omni_dir, "*.png")))
 
 W_fi, H_fi = camera_r.width, camera_r.height
 
+def _load_centers(csv_path):
+    out = []
+    with open(csv_path, "r", newline="") as fh:
+        for row in csv.DictReader(fh):
+            u = float(row["u"]); v = float(row["v"])
+            w = float(row.get("area_px") or row.get("weight", 1.0))
+            out.append((u * W_eq, v * H_eq, w))
+    return out
+
+
 dirs_cam = get_cam_ray_dirs(camera_r, mask=True, radius=args.radius_r).cpu().numpy()
 
 r, Rpix = radial_mask(W_fi, H_fi)
@@ -50,6 +62,11 @@ lens_mask = (r < (Rpix - (args.radius_r + 0.5)))
 for img_path in img_paths:
     stem = os.path.splitext(os.path.basename(img_path))[0]
     img_omni = cv2.imread(img_path)
+    if img_omni is None:
+        print(f"[skip] {stem} | could not load {img_path}")
+        continue
+    # Use the ACTUAL omni dimensions, not the hardcoded synthetic-fisheye-derived ones.
+    H_eq, W_eq = img_omni.shape[:2]
     centers_csv = os.path.join(centers_dir, f"{stem}.csv")
     
     rows = []
@@ -75,7 +92,7 @@ for img_path in img_paths:
                     near_csv = os.path.join(centers_dir, f"{near_stem}.csv")
 
                     try:
-                        tmp = load_rows(near_csv)
+                        tmp = load_rows(near_csv, W_eq, H_eq)
                         if len(tmp) > 0:
                             rows = tmp
                             print(f"[reuse] {stem} uses centers from {near_stem} (distance {d})")

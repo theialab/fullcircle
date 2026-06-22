@@ -9,8 +9,6 @@ runs/
 eval/
 
 data/
-yolov8s.pt
-
 debug_**
 grid_search
 utils/ngc/grid_search_configs

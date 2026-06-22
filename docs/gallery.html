@@ -15,8 +15,10 @@
       --c-bottom-text: white;
       --c-bottom-bg: #111827;
       --c-bottom-bg-hover: #374151;
-
+      --c-section-divider: #e5e7eb;
       --fs-button: 15px;
+      --fs-caption: 0.9rem;
+      --fs-section-title: 1.4rem;
     }
     body {
       font-family: 'Noto Sans', sans-serif;
@@ -37,67 +39,116 @@
       margin-bottom: 20px;
     }
 
+    /* top nav */
+    .top-links {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
     /* buttons */
     .custom-button {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       text-decoration: none;
       background: var(--c-bottom-bg);
       color: var(--c-bottom-text);
       padding: 10px 18px;
       border-radius: 20px;
+      min-width: 100px;
       font-size: var(--fs-button);
       transition: 0.2s ease;
+      margin: 0.1rem;
+      border: none;
+      cursor: pointer;
+      box-sizing: border-box;
+      vertical-align: middle;
+      line-height: 1;
     }
     .custom-button:hover {
       background: var(--c-bottom-bg-hover);
       color: var(--c-bottom-text);
       transform: translateY(-1px);
     }
-    .top-links {
-      text-align: center;
-      margin-bottom: 10px;
+    .custom-button.active {
+      background: var(--c-bottom-bg-hover);
+      color: var(--c-bottom-text);
     }
 
-    /* video */
-    .video-card {
-      display: grid;
-      grid-template-columns: 32px 1fr;
-      align-items: center;
-      padding: 0;
-      margin: 0 auto;
-      position: relative;
+    /* sections */
+    .gallery-section {
+      margin-top: 2.5rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--c-section-divider);
     }
-    .video-card + .video-card {
-      margin-top: -62px;
+    .gallery-section:first-of-type {
+      border-top: none;
+      padding-top: 0;
+      margin-top: 1rem;
     }
-    .video-card h3 {
-      margin: 0;
+    .section-title {
+      font-size: var(--fs-section-title);
       font-weight: 600;
-      transform: rotate(-90deg) translateX(10px);
-      transform-origin: center;
-      white-space: nowrap;
       text-align: center;
+      margin-bottom: 0.4rem;
     }
-    video {
-      width: 100%;
+    .section-subtitle {
+      text-align: center;
+      color: var(--c-muted);
+      font-size: var(--fs-caption);
+      margin-bottom: 1.2rem;
+    }
+    .button-row {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    /* video switcher */
+    .video-container {
+      display: none;
+    }
+    .video-container.active {
       display: block;
     }
-    
+    .scene-video {
+      width: 100%;
+      display: block;
+      margin: 0 auto;
+      max-width: 1100px;
+    }
+
+    /* placeholder */
+    .placeholder-box {
+      border: 2px dashed var(--c-section-divider);
+      border-radius: 8px;
+      padding: 3rem 1rem;
+      text-align: center;
+      color: var(--c-muted);
+      font-size: var(--fs-caption);
+    }
+    .placeholder-box i {
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+      display: block;
+      opacity: 0.4;
+    }
+
     /* media */
     @media (max-width: 768px) {
       .container {
         padding: 16px 12px 8px;
       }
-      .video-card + .video-card {
-        margin-top: -22px;
+      :root {
+        --fs-button: 14px;
+        --fs-caption: 0.8rem;
+        --fs-section-title: 1.15rem;
       }
-      .video-card h3 {
-        font-size: 14px;
+      .custom-button {
+        width: 100%;
+        max-width: 260px;
       }
     }
-
   </style>
 </head>
 <body>
@@ -112,53 +163,184 @@
     <h1>Gallery</h1>
     <p class="subtitle">Additional qualitative results</p>
 
-    <div class="video-card">
-      <h3>Room 1</h3>
-      <video autoplay muted loop playsinline preload="auto">
-        <source src="static/videos/results/room1.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
+    <!-- ── Section 1: Rest of Scenes ───────────────────────── -->
+    <div class="gallery-section">
+      <h2 class="section-title">Rest of Scenes</h2>
+      <p class="section-subtitle">13 scenes total — evaluated on a <strong>tripod</strong> test set.</p>
+
+      <div class="button-row">
+        <button class="custom-button" onclick="showVideo('s1-room1',    'sec1', this)">Room 1</button>
+        <button class="custom-button"        onclick="showVideo('s1-flat1',    'sec1', this)">Flat 1</button>
+        <button class="custom-button"        onclick="showVideo('s1-bedroom2', 'sec1', this)">Bedroom 1</button>
+        <button class="custom-button active" onclick="showVideo('s1-room3',    'sec1', this)">Room 3</button>
+        <button class="custom-button"        onclick="showVideo('s1-lab',      'sec1', this)">Lab</button>
+        <button class="custom-button"        onclick="showVideo('s1-kitchen',  'sec1', this)">Kitchen</button>
+        <button class="custom-button"        onclick="showVideo('s1-persons',  'sec1', this)">Persons</button>
+        <button class="custom-button"        onclick="showVideo('s1-dark',     'sec1', this)">Dark</button>
+        <button class="custom-button"        onclick="showVideo('s1-bedroom3', 'sec1', this)">Bedroom 2</button>
+        <button class="custom-button"        onclick="showVideo('s1-oslo',     'sec1', this)">Oslo</button>
+      </div>
+
+      <div id="s1-room1" class="video-container active" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/room1.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-flat1" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/flat1.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-bedroom2" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/bedroom2.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-room3" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/room3.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-lab" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/lab.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-kitchen" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/kitchen.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-persons" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/persons.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-dark" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/dark.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-bedroom3" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/bedroom3.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s1-oslo" class="video-container" data-group="sec1">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/fullcircle/oslo.mp4" type="video/mp4">
+        </video>
+      </div>
     </div>
 
-    <div class="video-card">
-      <h3>Flat 1</h3>
-      <video autoplay muted loop playsinline preload="auto">
-        <source src="static/videos/results/flat1.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
+    <!-- ── Section 2: Held-out Scenes ──────────────────────── -->
+    <div class="gallery-section">
+      <h2 class="section-title">Held-out Scenes</h2>
+      <p class="section-subtitle">10 scenes total — evaluated on a <strong>masked held-out</strong> test set.</p>
+
+      <div class="button-row">
+        <button class="custom-button active" onclick="showVideo('s2-cs',       'sec2', this)">CS</button>
+        <button class="custom-button"        onclick="showVideo('s2-trees',    'sec2', this)">Trees</button>
+        <button class="custom-button"        onclick="showVideo('s2-parking',  'sec2', this)">Parking</button>
+        <button class="custom-button"        onclick="showVideo('s2-safeway1', 'sec2', this)">Safeway 1</button>
+        <button class="custom-button"        onclick="showVideo('s2-safeway2', 'sec2', this)">Safeway 2</button>
+        <button class="custom-button"        onclick="showVideo('s2-safeway3', 'sec2', this)">Safeway 3</button>
+        <button class="custom-button"        onclick="showVideo('s2-street1',  'sec2', this)">Street 1</button>
+        <button class="custom-button"        onclick="showVideo('s2-street2',  'sec2', this)">Street 2</button>
+        <button class="custom-button"        onclick="showVideo('s2-lounge2',  'sec2', this)">Lounge 2</button>
+        <button class="custom-button"        onclick="showVideo('s2-robot',    'sec2', this)">Robot</button>
+      </div>
+
+      <div id="s2-cs" class="video-container active" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/cs9.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-trees" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/trees.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-parking" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/parking.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-safeway1" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/safeway_1.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-safeway2" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/safeway_2.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-safeway3" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/safeway_3.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-street1" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/street_1.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-street2" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/street_2.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-lounge2" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/lounge_2.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s2-robot" class="video-container" data-group="sec2">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/plus/robot.mp4" type="video/mp4">
+        </video>
+      </div>
     </div>
 
-    <div class="video-card">
-      <h3>Room 3</h3>
-      <video autoplay muted loop playsinline preload="auto">
-        <source src="static/videos/results/room3.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
+    <!-- ── Section 3: Internet Videos ───────────────────── -->
+    <div class="gallery-section">
+      <h2 class="section-title">Internet Videos</h2>
+      <p class="section-subtitle">Qualitative masking results on internet videos.</p>
+
+      <div class="button-row">
+        <button class="custom-button active" onclick="showVideo('s3-car', 'sec3', this)">Car</button>
+        <button class="custom-button" onclick="showVideo('s3-dormitory', 'sec3', this)">Dormitory</button>
+      </div>
+
+      <div id="s3-car" class="video-container active" data-group="sec3">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/internet/car.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div id="s3-dormitory" class="video-container" data-group="sec3">
+        <video class="scene-video" autoplay muted loop playsinline preload="auto">
+          <source src="static/videos/results/internet/dormitory.mp4" type="video/mp4">
+        </video>
+      </div>
     </div>
 
-    <div class="video-card">
-      <h3>Lab</h3>
-      <video autoplay muted loop playsinline preload="auto">
-        <source src="static/videos/results/lab.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
-    </div>
-
-    <div class="video-card">
-      <h3>Persons</h3>
-      <video autoplay muted loop playsinline preload="auto">
-        <source src="static/videos/results/persons.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
-    </div>
-
-    <div class="video-card">
-      <h3>Dark</h3>
-      <video autoplay muted loop playsinline preload="auto">
-        <source src="static/videos/results/dark.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
-    </div>
   </div>
+
+  <script>
+    function showVideo(videoId, group, btn) {
+      document.querySelectorAll('.video-container[data-group="' + group + '"]')
+        .forEach(v => v.classList.remove('active'));
+
+      const selected = document.getElementById(videoId);
+      if (selected) selected.classList.add('active');
+
+      if (btn) {
+        btn.closest('.button-row').querySelectorAll('.custom-button')
+          .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+    }
+  </script>
 </body>
 </html>

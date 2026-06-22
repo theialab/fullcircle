@@ -108,7 +108,6 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             self.image_paths = self.image_paths[split_mask]
             self.camera_centers = self.camera_centers[split_mask]
             self.mask_paths = self.mask_paths[split_mask]
-            self.dilated_mask_paths = self.dilated_mask_paths[split_mask]
 
             self.n_frames = self.poses.shape[0]
             print(f"After suffix filtering ({self.split}): {self.n_frames} frames")
@@ -173,7 +172,6 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.camera_centers = self.camera_centers[indices_mask]
         self.center, self.length_scale, self.scene_bbox = self.compute_spatial_extents()
         self.mask_paths = self.mask_paths[indices_mask] 
-        self.dilated_mask_paths = self.dilated_mask_paths[indices_mask]
         
         # Update the number of frames to only include the samples from the split
         self.n_frames = self.poses.shape[0]
@@ -232,6 +230,8 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             rays_o_cam, rays_d_cam = pinhole_camera_rays(
                 u, v, focalx, focaly, w, h, self.ray_jitter
             )
+            pixel_coords = create_pixel_coords(w, h)
+
             return (
                 params.to_dict(),
                 torch.tensor(rays_o_cam, dtype=torch.float32).reshape(out_shape),
@@ -485,7 +485,6 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.poses = []
         self.image_paths = []
         self.mask_paths = []
-        self.dilated_mask_paths = []
         
         cam_centers = []
         for extr in logger.track(
@@ -512,8 +511,7 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             rel_path = os.path.relpath(image_path, os.path.join(self.path, images_folder))
             mask_stem = os.path.splitext(rel_path)[0] + "_mask.png"
             masks_base = f"masks{downsample_suffix}"
-            self.mask_paths.append(os.path.join(self.path, masks_base, f"masks-1{downsample_suffix}", mask_stem))
-            self.dilated_mask_paths.append(os.path.join(self.path, masks_base, f"masks-20{downsample_suffix}", mask_stem))
+            self.mask_paths.append(os.path.join(self.path, masks_base, f"masks-5{downsample_suffix}", mask_stem))
             
         self.camera_centers = np.array(cam_centers)
         _, diagonal = get_center_and_diag(self.camera_centers)
@@ -522,7 +520,6 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
         self.poses = np.stack(self.poses)
         self.image_paths = np.stack(self.image_paths, dtype=str)
         self.mask_paths = np.stack(self.mask_paths, dtype=str)
-        self.dilated_mask_paths = np.stack(self.dilated_mask_paths, dtype=str)
 
     def _lazy_worker_intrinsics_cache(self):
         """Create intrinsics cache for a specific worker."""
@@ -676,12 +673,6 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             ).reshape(1, actual_h, actual_w, 1)
             output_dict["mask"] = mask
 
-        if os.path.exists(dilated_mask_path := self.dilated_mask_paths[idx]):
-            dilated_mask = torch.from_numpy(
-                np.array(Image.open(dilated_mask_path).convert("L"))
-            ).reshape(1, actual_h, actual_w, 1)
-            output_dict["dilated_mask"] = dilated_mask       
-
         return output_dict
 
     def get_gpu_batch_with_intrinsics(self, batch):
@@ -714,11 +705,6 @@ class ColmapDataset(Dataset, BoundedMultiViewDataset, DatasetVisualization):
             mask = batch["mask"][0].to(self.device, non_blocking=True) / 255.0
             mask = (mask > 0.5).to(torch.float32)
             sample["mask"] = mask
-        
-        if "dilated_mask" in batch:
-            dilated_mask = batch["dilated_mask"][0].to(self.device, non_blocking=True) / 255.0
-            dilated_mask = (dilated_mask > 0.5).to(torch.float32)
-            sample["dilated_mask"] = dilated_mask
 
         return Batch(**sample)
 

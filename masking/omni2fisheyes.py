@@ -10,6 +10,9 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--scene", required=True)
 parser.add_argument("--data_root", default="data")
+parser.add_argument("--pre_masking", default="pre_masking")
+parser.add_argument("--input_pre_masking", default=None)
+parser.add_argument("--omni_masks", default="omni_masks_final")
 parser.add_argument("--mapping", default="masking/mapping.txt")
 parser.add_argument("--radius_f", type=int, default=109)
 parser.add_argument("--radius_r", type=int, default=107)
@@ -17,10 +20,16 @@ parser.add_argument("--camera_size", type=int, default=2880)
 args = parser.parse_args()
 
 data_dir = f"{args.data_root}/{args.scene}"
+pm = f"{data_dir}/{args.pre_masking}"
+in_pm = f"{data_dir}/{args.input_pre_masking or args.pre_masking}"
 
-omni_masks_dir = f"{data_dir}/pre_masking/omni_masks_final"
-front_dir = f"{data_dir}/pre_masking/fisheye_masks_camera1"
-rear_dir = f"{data_dir}/pre_masking/fisheye_masks_camera2"
+omni_masks_dir = (
+    args.omni_masks
+    if os.path.isabs(args.omni_masks) or os.path.dirname(args.omni_masks)
+    else os.path.join(pm, args.omni_masks)
+)
+front_dir = f"{pm}/fisheye_masks_camera1"
+rear_dir = f"{pm}/fisheye_masks_camera2"
 
 os.makedirs(front_dir, exist_ok=True)
 os.makedirs(rear_dir,  exist_ok=True)
